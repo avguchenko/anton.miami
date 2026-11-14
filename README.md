@@ -98,8 +98,10 @@ PostHog's own data covers the rest: `$pageview` / `$pageleave`, autocaptured cli
 include the canvas at 2 fps, so you can watch the cursor move over the actual animation. To turn
 canvas recording off, set `RECORD_CANVAS = false` in `track.js`.
 
-`page_summary` can fire more than once per session when someone tabs away and back. Its
-numbers are cumulative, so use the row with the highest `seq` per `$session_id`.
+`page_summary` can fire more than once per page load when someone tabs away and back. Its
+numbers are cumulative within that load, so keep the row with the highest `seq` per `page_id`,
+then roll page loads up into sessions (the SQL below does this). `max_idle_s` includes the idle
+stretch still running when the visitor leaves.
 
 ## Running the test properly
 
@@ -126,11 +128,11 @@ variant pulls ahead. Early leads at small sample sizes are mostly noise.
 
 ### SQL (PostHog → SQL editor)
 ```sql
--- one row per session: the final page_summary
-WITH s AS (
+-- 1) one row per page load: the final page_summary of that load
+WITH loads AS (
   SELECT
-    properties.variant                       AS variant,
-    properties.$session_id                   AS sid,
+    any(properties.variant)                                   AS variant,
+    any(properties.$session_id)                               AS sid,
     argMax(toFloat(properties.visible_s),   toInt(properties.seq)) AS visible_s,
     argMax(toFloat(properties.attentive_s), toInt(properties.seq)) AS attentive_s,
     argMax(properties.exit,                 toInt(properties.seq)) AS exit,
@@ -139,16 +141,26 @@ WITH s AS (
   WHERE event = 'page_summary'
     AND properties.ab_preview = false
     AND properties.ab_experiment = 'front-page-2026-11'
+  GROUP BY properties.page_id
+),
+-- 2) roll page loads (reloads, extra tabs) up into sessions
+s AS (
+  SELECT variant, sid,
+    sum(visible_s)            AS visible_s,
+    sum(attentive_s)          AS attentive_s,
+    max(exit = 'outbound')    AS clicked_out,
+    sum(travel)               AS travel
+  FROM loads
   GROUP BY variant, sid
 )
 SELECT
   variant,
-  count()                              AS sessions,
-  round(avg(visible_s >= 30) * 100, 1) AS pct_engaged_30s,
-  quantile(0.5)(visible_s)             AS median_visible_s,
-  quantile(0.5)(attentive_s)           AS median_attentive_s,
-  round(avg(exit = 'outbound') * 100, 1) AS pct_clicked_out,
-  round(avg(travel), 1)                AS avg_pointer_travel_screens
+  count()                                AS sessions,
+  round(avg(visible_s >= 30) * 100, 1)   AS pct_engaged_30s,
+  quantile(0.5)(visible_s)               AS median_visible_s,
+  quantile(0.5)(attentive_s)             AS median_attentive_s,
+  round(avg(clicked_out) * 100, 1)       AS pct_clicked_out,
+  round(avg(travel), 1)                  AS avg_pointer_travel_screens
 FROM s
 GROUP BY variant
 ORDER BY variant

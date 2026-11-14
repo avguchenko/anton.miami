@@ -42,6 +42,8 @@
   var optedOut = selfOptOut || navigator.globalPrivacyControl === true || navigator.doNotTrack === '1';
 
   var t0 = performance.now();
+  // one id per page load, so summaries from reloads / other tabs in the same session stay separate
+  var pageId = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now());
   var queue = [];
   function capture(event, props, beacon) {
     props = props || {};
@@ -246,7 +248,10 @@
     seq++;
     var diag = Math.hypot(innerWidth, innerHeight) || 1;
     var totalGrid = s.grid.reduce(function (a, b) { return a + b; }, 0) || 1;
+    var nowS = performance.now();
+    var idleTail = nowS - (s.lastInputAt === null ? t0 : s.lastInputAt); // the idle stretch still running at exit
     capture('page_summary', {
+      page_id: pageId,               // dedupe: last seq per page_id, then roll up to sessions/visitors
       seq: seq,                      // a visitor who tabs away and back sends several; use the last per session
       reason: reason,                // hidden | pagehide
       exit: exitHref ? 'outbound' : 'left',
@@ -256,7 +261,7 @@
       attentive_s: Math.round(s.attentiveMs / 1000),
       interacted: s.firstInputAt !== null,
       ms_to_first_input: s.firstInputAt === null ? null : Math.round(s.firstInputAt - t0),
-      max_idle_s: Math.round(s.maxIdleMs / 1000),
+      max_idle_s: Math.round(Math.max(s.maxIdleMs, idleTail) / 1000),
       pointer_moves: s.moves,
       pointer_travel_screens: +(s.distancePx / diag).toFixed(2), // distance in screen diagonals
       presses: s.downs,
