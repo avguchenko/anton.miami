@@ -66,7 +66,9 @@ run_once() {
   local changed
   changed=$(git status --porcelain | awk '{print $2}' | sed -E 's#public/variants/([^/]+)/.*#\1#' | sort -u | tr '\n' ' ')
   git add -A
-  git commit --quiet -m "Auto-publish page designs: ${changed% }"
+  # Auto-commits are unsigned: commit signing (e.g. 1Password SSH) needs a click that an
+  # unattended job can't give. Your own commits keep whatever signing you've configured.
+  git -c commit.gpgsign=false commit --quiet -m "Auto-publish page designs: ${changed% }"
   git push --quiet || { log "committed but push failed; will retry next hour"; notify "Auto-publish: push failed, will retry"; return 1; }
   log "published: ${changed% } ($(git rev-parse --short HEAD))"
   notify "Published new ${changed% } page; live in about a minute"
