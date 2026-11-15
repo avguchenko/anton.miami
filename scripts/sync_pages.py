@@ -9,6 +9,7 @@ script, and each page's GitHub link. It fails loudly if a page's markup changed
 so much that an anchor point is gone, rather than silently skipping something.
 """
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -75,11 +76,34 @@ def chart(s):
     return s
 
 
+# Files a page may load from beside itself (images, fonts, data, audio)
+ASSET_EXT = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".avif", ".json", ".woff", ".woff2", ".mp3", ".ogg", ".wav", ".bin"}
+
+
+def copy_assets(src_html, variant, html):
+    """Copy assets that sit beside the source page into its variant folder, and point the
+    page's references at their served location. The Worker serves every variant at "/",
+    so a bare relative name like "constellations.webp" would otherwise 404."""
+    src_dir, out_dir = Path(src_html).parent, ROOT / "public" / "variants" / variant
+    for f in sorted(src_dir.iterdir()):
+        if not f.is_file() or f.suffix.lower() not in ASSET_EXT:
+            continue
+        if not re.search(r"""["'(]\.?/?""" + re.escape(f.name) + r"""["')]""", html):
+            continue  # not used by this page (e.g. the other design's files)
+        shutil.copy2(f, out_dir / f.name)
+        served = f"/variants/{variant}/{f.name}"
+        html = re.sub(r"""(["'(])(?:\./)?""" + re.escape(f.name) + r"""(["')])""", lambda m: m.group(1) + served + m.group(2), html)
+        print(f"{variant}: asset {f.name} -> {served}")
+    return html
+
+
 def main():
     need(len(sys.argv) == 3, __doc__)
     for src, variant, fn in ((sys.argv[1], "dawn", dawn), (sys.argv[2], "chart", chart)):
         out = ROOT / "public" / "variants" / variant / "index.html"
-        out.write_text(fn(Path(src).read_text(encoding="utf-8")), encoding="utf-8")
+        html = fn(Path(src).read_text(encoding="utf-8"))
+        html = copy_assets(src, variant, html)
+        out.write_text(html, encoding="utf-8")
         print(f"{variant}: {src} -> {out.relative_to(ROOT)}")
 
 
