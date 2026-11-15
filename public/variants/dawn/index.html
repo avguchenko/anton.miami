@@ -292,7 +292,7 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
   /* ================= the wake: 2-D wave equation on a log-polar grid fixed to the world =================
      360 columns of one degree each, rows geometric in range. The grid is conformal, so the plain
      five-point stencil is the true wave equation with a speed that grows with distance. */
-  const NT = 360, NR = 176, RMIN = 0.3, DTH = TAU / NT, DV = Math.log(45) / 99, DAMP = 0.9965;
+  const NT = 360, NR = 176, RMIN = 0.3, DTH = TAU / NT, DV = Math.log(45) / 99, DAMP = 0.9960;
   const cR = 0.45 / (1 + (DV * DV) / (DTH * DTH)), cT = 0.45 - cR;
   let cur = new Float32Array(NT * NR), prev = new Float32Array(NT * NR), nxt = new Float32Array(NT * NR);
   const dampR = new Float32Array(NR);
@@ -308,16 +308,18 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
     }
     const t = prev; prev = cur; cur = nxt; nxt = t;
   }
+  // A disturbance is put in as a ripple with no net volume (a dip ringed by a low rise) and no initial
+  // velocity. A plain dent would leave the whole patch rocking up and down in place; this leaves as a ring.
   function splat(gi, gj, s, rad) {
     const sj = 1.2 * rad, si = sj * DV / DTH;
-    const rj = Math.ceil(sj * 2.5), ri = Math.ceil(si * 2.5);
+    const rj = Math.ceil(sj * 3), ri = Math.ceil(si * 3);
     const i0 = Math.round(gi), j0 = Math.round(gj);
     for (let dj = -rj; dj <= rj; dj++) {
       const j = j0 + dj; if (j < 1 || j > NR - 2) continue;
       for (let di = -ri; di <= ri; di++) {
-        const ii = i0 + di, a = (ii - gi) / si, b = (j - gj) / sj, g = s * Math.exp(-(a * a + b * b));
+        const ii = i0 + di, a = (ii - gi) / si, b = (j - gj) / sj, r2 = a * a + b * b, g = s * (1 - r2) * Math.exp(-r2);
         const k = j * NT + ((ii % NT) + NT) % NT;
-        cur[k] -= g; prev[k] -= g * 0.5;
+        cur[k] -= g; prev[k] -= g;
       }
     }
   }
@@ -330,7 +332,7 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
   function trail(last, g, power) {
     const di = ((g.gi - last.gi + NT * 1.5) % NT) - NT / 2, dj = g.gj - last.gj;
     const d = Math.hypot(di * DTH / DV, dj), n = clamp(Math.ceil(d / 0.7), 1, 40), s = power / Math.sqrt(n);
-    for (let q = 1; q <= n; q++) splat(last.gi + di * q / n, last.gj + dj * q / n, s, 1);
+    for (let q = 1; q <= n; q++) splat(last.gi + di * q / n, last.gj + dj * q / n, s, 1.5);
   }
 
   /* ================= camera ================= */
@@ -434,13 +436,14 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
     ptr.x = x; ptr.y = y; ptr.on = true; ptr.t = lastInput = now;
     const g = unproject(x, y);
     if (g.sky) { lastG = null; return; }
-    if (lastG) trail(lastG, g, Math.min(0.9, 0.1 + dist / 55));
+    // The sea is heavy: a slow pointer barely marks it, and even a fast one leaves a low, broad wake.
+    if (lastG) trail(lastG, g, Math.min(0.45, dist * dist / 6000));
     lastG = g;
   });
   function release(e, drop) {
     if (drag && drop && drag.moved <= 4) {
       const g = unproject(drag.x, drag.y);
-      if (!g.sky) { splat(g.gi, g.gj, 2.4, 1.7); lastG = g; }
+      if (!g.sky) { splat(g.gi, g.gj, 1.4, 1.7); lastG = g; }
     }
     drag = null; cv.style.cursor = '';
     if (e.pointerType === 'touch') ptr.on = false;
@@ -808,7 +811,7 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
     if (!reduce && now - lastInput > 3500) {
       const tau = now / 1000 * 0.22;
       const g = { gi: psi / DTH + 22 * Math.sin(3 * tau), gj: Math.log(6 / RMIN) / DV + 14 * Math.sin(2 * tau + Math.PI / 2) };
-      if (idleG) trail(idleG, g, 0.16);
+      if (idleG) trail(idleG, g, 0.09);
       idleG = g;
     } else idleG = null;
     step(); step();

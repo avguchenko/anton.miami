@@ -21,34 +21,32 @@
 <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..600;1,6..96,400..600&display=swap" rel="stylesheet">
 <style>
   :root {
-    /* Night edition (default): ink-navy water, seafoam and chalk linework, one coral accent.
+    /* Night edition (sun below Miami's horizon): ink-navy water, seafoam and chalk linework, one coral accent.
        Layout: full-bleed chart; title block top-left, scale bar bottom-left, compass rose bottom-right. */
     --bg: #0a1b2d;
     --ink: #e9efe9;
     --line: #9ed6c6;
     --accent: #f48f70;
-    --veil: 10 27 45;
     --font-display: "Bodoni Moda", "Bodoni 72", Didot, "Didot LT STD", "Hoefler Text", Georgia, serif;
     --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
     color-scheme: dark;
   }
-  :root[data-edition="paper"] {
-    /* Paper edition: cream chart paper, ink lines, shoal water tinted pale blue */
+  :root[data-edition="day"] {
+    /* Day edition (sun above the horizon): cream chart paper, ink lines, shoal water tinted pale blue */
     --bg: #f3ebd9;
     --ink: #18283e;
     --line: #34646c;
     --accent: #c24e32;
-    --veil: 243 235 217;
     color-scheme: light;
   }
 
-  html, body { height: 100%; margin: 0; overflow: hidden; background: var(--bg); }
+  html, body { height: 100%; margin: 0; overflow: hidden; background: var(--bg); overscroll-behavior: none; }
   body {
     color: var(--ink);
     font-family: var(--font-mono);
     -webkit-font-smoothing: antialiased;
     -webkit-text-size-adjust: 100%;
-    transition: background-color 1.4s ease, color 1.4s ease;
+    transition: background-color 1.6s ease, color 1.6s ease;
   }
   canvas#chart {
     position: fixed; inset: 0; width: 100%; height: 100%;
@@ -61,10 +59,9 @@
     position: fixed;
     left: clamp(30px, 4.6vw, 70px);
     top: clamp(30px, 6vh, 62px);
-    max-width: min(80vw, 330px);
+    max-width: min(80vw, 340px);
     pointer-events: none;
     user-select: none; -webkit-user-select: none;
-    display: flex; flex-direction: column; gap: 0;
   }
   .title h1 {
     margin: 0;
@@ -84,27 +81,25 @@
     letter-spacing: .02em;
     opacity: .78;
   }
-  .title .rule { width: 30px; height: 1px; margin: 15px 0 13px; background: var(--accent); opacity: .85; }
+  .title .rule { width: 30px; height: 1px; margin: 15px 0 13px; background: var(--accent); opacity: .85; transition: background-color 1.6s ease; }
   .readout { margin: 0; display: grid; grid-template-columns: auto 1fr; column-gap: 14px; row-gap: 5px; align-items: baseline; }
   .readout dt { font-size: 8.5px; letter-spacing: .2em; text-transform: uppercase; opacity: .48; }
   .readout dd { margin: 0; font-size: 11.5px; letter-spacing: .03em; font-variant-numeric: tabular-nums; white-space: nowrap; opacity: .92; }
-  .notes { margin: 14px 0 0; font-size: 8.5px; line-height: 1.75; letter-spacing: .14em; text-transform: uppercase; opacity: .46; }
-  .notes button {
-    all: unset; pointer-events: auto; cursor: none;
-    transition: opacity .5s ease;
-  }
+  .notes { margin: 14px 0 0; font-size: 8.5px; line-height: 1.75; letter-spacing: .14em; text-transform: uppercase; opacity: .46; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .notes button { all: unset; pointer-events: auto; cursor: none; transition: opacity .5s ease; }
   .notes a { all: unset; pointer-events: auto; cursor: none; transition: opacity .5s ease; border-bottom: 1px solid currentColor; }
   .notes a:hover { opacity: .55; }
   .notes a:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
   .notes button:hover { opacity: .55; }
   .notes button:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
   .notes .sep { opacity: .6; padding: 0 .35em; }
-  #stats { display: block; text-transform: none; letter-spacing: .06em; font-variant-numeric: tabular-nums; }
+  #stats { display: block; text-transform: none; letter-spacing: .06em; white-space: normal; }
   #stats[hidden] { display: none; }
 
   @media (max-width: 560px) {
     .title { left: 24px; top: 26px; }
     .readout dd { font-size: 10.5px; }
+    .notes { letter-spacing: .1em; }
   }
   @media (max-height: 430px) { .notes { display: none; } }
 </style>
@@ -123,7 +118,8 @@
   </dl>
   <p class="notes">
     Straits of Florida<span class="sep">·</span>Soundings in fathoms<br>
-    <button type="button" id="btn-proj" aria-label="Change map projection">Mercator projection</button><span class="sep">·</span><button type="button" id="btn-ed" aria-label="Switch between night and paper editions">Night edition</button><span class="sep">·</span><a href="https://github.com/avguchenko" target="_blank" rel="noopener" data-track="github">GitHub</a>
+    <button type="button" id="btn-proj" aria-label="Change map projection">Mercator projection</button><span class="sep">·</span><button type="button" id="btn-scale" aria-label="Return to the full chart">Scale 1:330,000</button><br>
+    <button type="button" id="btn-ed" aria-label="Switch between night and day editions">Night edition</button><span class="sep">·</span><a href="https://github.com/avguchenko" target="_blank" rel="noopener" data-track="github">GitHub</a>
     <span id="stats" hidden></span>
   </p>
 </header>
@@ -139,39 +135,47 @@ const CFG = {
   // Palette as [r,g,b]. `deep`/`shoal` tint the water; `line` and `chalk` draw; `accent` is used sparingly.
   PALETTE: {
     night: { deep: [6, 17, 30],     shoal: [18, 46, 64],    line: [158, 214, 198], chalk: [233, 239, 233], accent: [244, 143, 112], gain: 1.0 },
-    paper: { deep: [244, 236, 219], shoal: [205, 225, 223], line: [52, 100, 108],  chalk: [24, 40, 62],    accent: [194, 78, 50],   gain: 1.45 },
+    day:   { deep: [244, 236, 219], shoal: [205, 225, 223], line: [52, 100, 108],  chalk: [24, 40, 62],    accent: [194, 78, 50],   gain: 1.45 },
   },
 
   // Geography
-  MIAMI: { lat: 25.76, lon: -80.19 },   // chart datum
+  MIAMI: { lat: 25.76, lon: -80.19 },   // chart datum, and where the sun is watched from
+  TIME_ZONE: 'America/New_York',
+  SUN_HORIZON: -0.833,                  // degrees: the sun's upper limb on the horizon, with refraction
   SCALE_DIV: 76,                        // viewport width / SCALE_DIV = px per minute of longitude…
   SCALE_RANGE: [11, 20],                // …clamped to this range
-  GRATICULE_MINUTES: 10,
   MAGNETIC_VAR: -7.5,                   // degrees (west negative)
+
+  // Zoom
+  ZOOM: [0.4, 8],                       // widest and closest view, relative to the opening frame
+  ZOOM_RATE: 0.0023,                    // zoom per wheel pixel (pinch gestures use a faster rate)
+  ZOOM_EASE: 0.17,                      // seconds; how softly the view follows the wheel
 
   // Field and contours
   CELL: 9,                              // marching-squares cell size in CSS px (grows on huge screens)
   MAX_NODES: 16500,
   MAX_DPR: 2,
-  NOISE_SCALE: 600,                     // px, wavelength of the broadest octave
+  NOISE_SCALE: 600,                     // px, wavelength of the main octave at the opening scale
   NOISE_SPEED: 0.013,                   // how fast the sea floor "breathes"
   NOISE_DRIFT: 3.2,                     // px/s the pattern drifts north with the current
   TREND: 0.66,                          // weight of the shelf → strait → bank profile
-  LEVEL_STEP: 0.125,                    // contour interval in field units
-  INDEX_EVERY: 5,                       // every nth contour is drawn heavier
+  LEVEL_STEP: 0.125,                    // contour interval in field units at the opening scale (halves with each doubling of zoom)
   SWELL_AMP: 0.04, SWELL_LENGTH: 940, SWELL_PERIOD: 24,
 
-  // Waves (2D wave equation on the contour grid)
-  WAVE_SPEED: 150,                      // px/s
-  WAVE_DAMPING: 0.9946,                 // per step
-  WAKE_GAIN: 0.003,                     // displacement per px of cursor travel
-  TRAIL_GAIN: 0.012, TRAIL_LIFE: 9,     // slow-movement groove: strength, seconds
-  STIR_GAIN: 0.055,  STIR_LIFE: 2.3,    // fast-movement turbulence: strength, seconds
+  // Water (2D wave equation on the contour grid). Slow and long: this is a lot of water to move.
+  WAVE_SPEED: 44,                       // px/s
+  WAVE_DAMPING: 0.9977,                 // per step, on the water's momentum
+  WAVE_RELAX: 0.9993,                   // per step, easing displaced water back to sea level
+  WAKE_RADIUS: 4.2,                     // cells; width of the hull pushing through
+  WAKE_FORCE: 0.000058,                 // downward push per px of cursor travel; the water answers with inertia
+  WAKE_BOW: 0.0011,                     // immediate displacement under the hull, per px of travel
+  TRAIL_GAIN: 0.012, TRAIL_LIFE: 13,    // slow-movement groove: strength, seconds
+  STIR_GAIN: 0.05,   STIR_LIFE: 4,      // fast-movement turbulence: strength, seconds
   TURBULENCE: 0.28,
 
   // Gulf Stream
   PARTICLES: 640,                       // at 1440×900, scaled by area
-  STREAM_AXIS: 0.725,                   // fraction of width
+  STREAM_AXIS: 0.725,                   // fraction of the opening frame's width
   STREAM_WIDTH: 0.068,                  // sigma, fraction of width
   STREAM_SPEED: 44,                     // px/s at the core
   STREAM_KNOTS: 2.8,                    // what the core reads as in the title block
@@ -184,8 +188,8 @@ const CFG = {
   IDLE_AFTER: 8,                        // seconds before the ghost takes the helm
   GHOST_PERIOD: 54,                     // seconds per Lissajous lobe
   BUOY_MAX: 9,
-  BUOY_PULSE: 0.36,                     // height of the first ring a buoy sends out
-  SOUNDING_AREA: 30000,                 // px² of chart per sounding
+  BUOY_PULSE: 0.42,                     // height of the first swell a buoy sends out
+  SOUNDING_CELL: 172,                   // px between soundings of the level that appears at the opening scale
   EGG_TRIGGER: 48,                      // px from a hotspot
 };
 
@@ -205,6 +209,11 @@ function mulberry32(a) {
 }
 const rand = mulberry32(1618033);
 const gauss = () => { let u = 0; for (let i = 0; i < 4; i++) u += rand(); return (u - 2) * 1.732; };
+function hash3(i, j, k) {               // a fixed pseudo-random number in [0,1) for a lattice cell
+  let h = Math.imul(i | 0, 0x27d4eb2d) ^ Math.imul(j | 0, 0x165667b1) ^ Math.imul(k | 0, 0x9e3779b1);
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b); h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
 
 /* Simplex noise, 3D (after Gustavson) */
 const n3 = (() => {
@@ -247,6 +256,16 @@ const n3 = (() => {
   };
 })();
 
+/* The sun's elevation in degrees over a place, from a low-precision almanac (good to about 0.01°) */
+function sunElevation(ms, lat, lon) {
+  const d = ms / 86400000 - 10957.5;                                  // days since J2000.0
+  const g = (357.529 + 0.98560028 * d) * D2R, q = 280.459 + 0.98564736 * d;
+  const L = (q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * D2R, e = (23.439 - 0.00000036 * d) * D2R;
+  const ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L)), dec = Math.asin(Math.sin(e) * Math.sin(L));
+  const ha = (((18.697374558 + 24.06570982441908 * d) % 24) * 15 + lon) * D2R - ra;
+  return Math.asin(Math.sin(lat * D2R) * Math.sin(dec) + Math.cos(lat * D2R) * Math.cos(dec) * Math.cos(ha)) / D2R;
+}
+
 /* ════════════════════════════════════════════════════════════════════
    3 · STATE
    ════════════════════════════════════════════════════════════════════ */
@@ -256,85 +275,97 @@ const root = document.documentElement;
 const el = {
   title: document.getElementById('title'),
   pos: document.getElementById('ro-pos'), depth: document.getElementById('ro-depth'), set: document.getElementById('ro-set'),
-  proj: document.getElementById('btn-proj'), ed: document.getElementById('btn-ed'), stats: document.getElementById('stats'),
+  proj: document.getElementById('btn-proj'), ed: document.getElementById('btn-ed'), scale: document.getElementById('btn-scale'),
+  stats: document.getElementById('stats'),
 };
 const reducedMQ = matchMedia('(prefers-reduced-motion: reduce)');
 let REDUCED = reducedMQ.matches;
 
 const STEP = 1 / 60;                        // fixed simulation step
-let W = 0, H = 0, dpr = 1, quality = 1;
+let W = 0, H = 0, dpr = 1, quality = 1;     // W×H is both the viewport and the "world" frame the chart opens on
 let cell = CFG.CELL, cols = 0, rows = 0, NX = 0, NY = 0, NN = 0;
-let Hf, Nz, trend, swPh, U, Up, Un, Tr, St, sponge, Gx, Gy;     // node fields
+let Hf, Nz, trend, swPh, U, Up, Un, Tr, St, S1, sponge, Gx, Gy;     // node fields (screen grid)
+let CNX = 0, CNY = 0, Cz, Ct;                                       // half-resolution noise lattice and its row-upsampled copy
 let tintCanvas, tintCtx, tintImg, tintLUT = new Uint8ClampedArray(256 * 3);
 let veilCanvas, veilCtx, veilMask;
 let simT = 0, fieldT = 40, stepCount = 0, fieldDirty = true;
 let hasTrail = false, hasStir = false;
 
-// chart geometry
+// chart geometry (world px = px of the opening frame)
 const chart = { lensR: CFG.LENS_RADIUS, scale: 18, k: 1, lonC: 0, latC: 0, mercC: 0, R: 1, M: 1, phi0: 0, inset: 14, miamiX: 0, miamiY: 0, sigma: 90 };
-const proj = { target: 0, p: 0 };           // 0 Mercator → 1 orthographic
-const edition = { target: 0, p: 0 };        // 0 night → 1 paper
+const proj = { target: 0, p: 0, e: 0 };     // 0 Mercator → 1 orthographic
+const edition = { target: 0, p: 0, tau: 0.5 };          // 0 night → 1 day
+const sun = { up: false, next: 0, override: null };     // override: the reader's own choice, until the sun next crosses the horizon
 let col = null;                             // current (possibly blended) palette
+
+// the view: screen = world × z + (tx, ty)
+const view = { z: 1, zt: 1, cx: 0, cy: 0, tx: 0, ty: 0, ax: 0, ay: 0, wax: 0, way: 0, anchored: false, homing: false, moved: false,
+               L: 0, fe: 0, coarse: CFG.LEVEL_STEP, fine: CFG.LEVEL_STEP / 2, g: 1, oct: new Float32Array(5) };
+const toWX = x => (x - view.tx) / view.z, toWY = y => (y - view.ty) / view.z;
+const toSX = x => x * view.z + view.tx, toSY = y => y * view.z + view.ty;
 
 // input
 const ptr = { tx: 0, ty: 0, sx: 0, sy: 0, vx: 0, vy: 0, spd: 0, stepX: 0, stepY: 0, heading: 0,
               present: false, lastInput: -1e9, down: false, downX: 0, downY: 0, downT: 0, type: 'mouse' };
 const ghost = { on: true, t: 0, blend: 1, ax: 0, ay: 0 };
 const lens = { cur: 0, prev: 0, mix: 1, alpha: 0, r: CFG.LENS_RADIUS, echo: null, auto: 0 };
+const pinch = { on: false, d: 0, mx: 0, my: 0, pts: new Map() };
 let lensCanvas, lensCtx;
 
 // chart furniture and things dropped on it
-let soundings = [], marks = [], buoys = [], rings = [], voronoi = [], voronoiDirty = true;
-let compass = { x: 0, y: 0, r: 50 }, scaleBar = { x: 0, y: 0, nm: 10, px: 0 }, titleRect = { x: 0, y: 0, w: 0, h: 0 };
-let eggs = [];
-const track = { n: 240, x: new Float32Array(240), y: new Float32Array(240), t: new Float32Array(240).fill(-1e9), g: new Uint8Array(240), head: 0 };
+let marks = [], buoys = [], rings = [], eggs = [], lissPts = null;
+const visSound = [], soundCache = new Map();
+let compass = { x: 0, y: 0, r: 50 }, scaleBar = { x: 0, y: 0, nm: 10, max: 240, alpha: 1 }, titleRect = { x: 0, y: 0, w: 0, h: 0 };
+const track = { n: 240, x: new Float32Array(240), y: new Float32Array(240), t: new Float32Array(240).fill(-1e9), head: 0 };   // world coords
 
-// particles
-let PN = 0, px, py, pvx, pvy, pk, pstray, plife, phist, phl, histHead = 0;
+// particles (screen coords, carried along when the view moves)
+let PN = 0, pAct = 0, px, py, pvx, pvy, pstray, phist, phl, histHead = 0;
 
-// contour segment buffers: 3 depth groups × (regular, index)
-const SEG_CAP = 24000;
-const segBuf = Array.from({ length: 6 }, () => new Float32Array(SEG_CAP * 8));
-const segN = new Int32Array(6);
+// contour segment buffers: 3 depth groups × 4 classes (index, rising index, regular, emerging)
+const SEG_CAP = 14000;
+const segBuf = Array.from({ length: 12 }, () => new Float32Array(SEG_CAP * 8));
+const segN = new Int32Array(12);
 
 const FONT_SERIF = '"Bodoni Moda","Bodoni 72",Didot,"Hoefler Text",Georgia,serif';
 const FONT_MONO = 'ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"DejaVu Sans Mono",monospace';
+const spacing = px => { if ('letterSpacing' in ctx) ctx.letterSpacing = px + 'px'; };
 
 /* ════════════════════════════════════════════════════════════════════
    4 · PROJECTION  (Mercator ⇄ a tilted orthographic view of an exaggerated globe)
    ════════════════════════════════════════════════════════════════════ */
 const mercY = lat => Math.log(Math.tan(Math.PI / 4 + lat * D2R / 2));
-const P = { x: 0, y: 0, vis: 1 }, Q = { x: 0, y: 0, vis: 1 }, LL = { lon: 0, lat: 0 };
+const P = { x: 0, y: 0, vis: 1 }, Q = { x: 0, y: 0, vis: 1 }, P_ = { x: 0, y: 0, vis: 1 }, LL = { lon: 0, lat: 0 };
 
-function projMerc(lon, lat, o) {
+function projMerc(lon, lat, o) {            // → world px
   o.x = W / 2 + chart.k * (lon - chart.lonC) * D2R;
   o.y = H / 2 - chart.k * (mercY(lat) - chart.mercC);
   o.vis = 1;
 }
-function projOrtho(lon, lat, o) {
+function projOrtho(lon, lat, o) {           // → world px
   const lam = (lon - chart.lonC) * D2R * chart.M, phi = chart.phi0 + (lat - chart.latC) * D2R * chart.M;
   const cp = Math.cos(phi), s0 = Math.sin(chart.phi0), c0 = Math.cos(chart.phi0);
   o.x = W / 2 + chart.R * cp * Math.sin(lam);
   o.y = H / 2 - chart.R * (c0 * Math.sin(phi) - s0 * cp * Math.cos(lam));
   o.vis = s0 * Math.sin(phi) + c0 * cp * Math.cos(lam);
 }
-function project(lon, lat, o) {
+function project(lon, lat, o) {             // → screen px
   const e = proj.e;
-  if (e <= 0.0005) return projMerc(lon, lat, o);
-  projMerc(lon, lat, P); projOrtho(lon, lat, Q);
-  o.x = lerp(P.x, Q.x, e); o.y = lerp(P.y, Q.y, e); o.vis = Q.vis;
+  if (e <= 0.0005) { projMerc(lon, lat, o); }
+  else { projMerc(lon, lat, P); projOrtho(lon, lat, Q); o.x = lerp(P.x, Q.x, e); o.y = lerp(P.y, Q.y, e); o.vis = Q.vis; }
+  o.x = toSX(o.x); o.y = toSY(o.y);
 }
-function unproject(x, y, o) {
-  const lonM = chart.lonC + (x - W / 2) / chart.k / D2R;
-  const latM = (2 * Math.atan(Math.exp(chart.mercC - (y - H / 2) / chart.k)) - Math.PI / 2) / D2R;
-  const e = proj.e;
+const unprojMercLon = x => chart.lonC + (x - W / 2) / chart.k / D2R;                                          // world x → longitude
+const unprojMercLat = y => (2 * Math.atan(Math.exp(chart.mercC - (y - H / 2) / chart.k)) - Math.PI / 2) / D2R; // world y → latitude
+function unproject(sx, sy, o) {             // screen px → lon/lat
+  const x = toWX(sx), y = toWY(sy), lonM = unprojMercLon(x), latM = unprojMercLat(y), e = proj.e;
   if (e <= 0.0005) { o.lon = lonM; o.lat = latM; return; }
   const X = (x - W / 2) / chart.R, Y = -(y - H / 2) / chart.R, rho = Math.min(0.999, Math.hypot(X, Y));
   let lonO = chart.lonC, latO = chart.latC;
   if (rho > 1e-9) {
+    const k = rho / Math.hypot(X, Y), Xc = X * k, Yc = Y * k;
     const c = Math.asin(rho), sc = Math.sin(c), cc = Math.cos(c), s0 = Math.sin(chart.phi0), c0 = Math.cos(chart.phi0);
-    const phi = Math.asin(clamp(cc * s0 + Y * sc * c0 / rho, -1, 1));
-    const lam = Math.atan2(X * sc, rho * c0 * cc - Y * s0 * sc);
+    const phi = Math.asin(clamp(cc * s0 + Yc * sc * c0 / rho, -1, 1));
+    const lam = Math.atan2(Xc * sc, rho * c0 * cc - Yc * s0 * sc);
     lonO = chart.lonC + lam / chart.M / D2R; latO = chart.latC + (phi - chart.phi0) / chart.M / D2R;
   }
   o.lon = lerp(lonM, lonO, e); o.lat = lerp(latM, latO, e);
@@ -343,24 +374,105 @@ function unproject(x, y, o) {
 const pad = (n, w) => String(n).padStart(w, '0');
 function fmtDM(v, isLat, decimals) {
   const hemi = isLat ? (v >= 0 ? 'N' : 'S') : (v >= 0 ? 'E' : 'W');
-  v = Math.abs(v); let d = Math.floor(v), m = (v - d) * 60;
+  v = Math.abs(v); let d = Math.floor(v + 1e-9), m = (v - d) * 60;
   const f = Math.pow(10, decimals); m = Math.round(m * f) / f; if (m >= 60) { m = 0; d++; }
   const ms = decimals ? pad(m.toFixed(decimals), 3 + decimals) : pad(m, 2);
   return `${pad(d, isLat ? 2 : 3)}°${ms}′${hemi}`;
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   5 · LAYOUT  (everything that depends on the viewport)
+   5 · THE VIEW  (zoom about the cursor; every level of detail derives from view.z)
+   ════════════════════════════════════════════════════════════════════ */
+function setLOD() {
+  const z = view.z, s = Math.log2(z), L = Math.floor(s + 1e-9);
+  view.L = L; view.fe = smooth(0.12, 0.88, s - L);          // fe: how far the next finer level has faded in
+  view.coarse = CFG.LEVEL_STEP / Math.pow(2, L); view.fine = view.coarse / 2;
+  view.g = 1 / z;                                           // water motion is measured in contour intervals, which shrink with zoom
+  const o = view.oct;                                       // noise octaves, coarse → fine: each arrives once the screen can resolve it
+  o[0] = 1 - smooth(0.5, 0.95, z); o[1] = smooth(0.45, 0.8, z); o[2] = smooth(1.15, 2, z); o[3] = smooth(2.3, 4, z); o[4] = smooth(4.6, 8, z);
+}
+
+function zoomAt(sx, sy, factor) {
+  view.homing = false;
+  view.zt = clamp(view.zt * factor, CFG.ZOOM[0], CFG.ZOOM[1]);
+  view.ax = sx; view.ay = sy; view.wax = toWX(sx); view.way = toWY(sy); view.anchored = true;
+}
+function goHome() { view.homing = true; view.anchored = false; view.zt = 1; }
+
+function updateView(dt) {
+  const z0 = view.z, tx0 = view.tx, ty0 = view.ty;
+  if (view.homing) {
+    view.z = Math.exp(damp(Math.log(view.z), 0, 0.45, dt)); view.cx = damp(view.cx, W / 2, 0.45, dt); view.cy = damp(view.cy, H / 2, 0.45, dt);
+    if (Math.abs(view.z - 1) < 0.0015 && Math.hypot(view.cx - W / 2, view.cy - H / 2) < 0.3) { view.z = 1; view.cx = W / 2; view.cy = H / 2; view.homing = false; }
+  } else {
+    const lt = Math.log(view.zt), lz = damp(Math.log(view.z), lt, pinch.on ? 0.05 : CFG.ZOOM_EASE, dt), settled = Math.abs(lz - lt) < 0.0006;
+    view.z = settled ? view.zt : Math.exp(lz);
+    if (view.anchored) {                                    // keep the anchored world point under the cursor
+      view.cx = view.wax + (W / 2 - view.ax) / view.z; view.cy = view.way + (H / 2 - view.ay) / view.z;
+      if (settled && !pinch.on) view.anchored = false;
+    }
+  }
+  // the view may not leave the widest frame, so zooming all the way out always lands on the same sheet
+  const mx = (W / 2) * (1 / CFG.ZOOM[0] - 1 / view.z), my = (H / 2) * (1 / CFG.ZOOM[0] - 1 / view.z);
+  view.cx = clamp(view.cx, W / 2 - mx, W / 2 + mx); view.cy = clamp(view.cy, H / 2 - my, H / 2 + my);
+  view.tx = W / 2 - view.cx * view.z; view.ty = H / 2 - view.cy * view.z;
+  view.moved = view.z !== z0 || view.tx !== tx0 || view.ty !== ty0;
+  if (view.moved) { setLOD(); reproject(z0, tx0, ty0); }
+}
+
+/* waves, trails and particles live in screen space: when the view moves, carry them along with the chart */
+function resample(src, dst, is, ox, oy) {
+  for (let j = 0, idx = 0; j < NY; j++) {
+    const fy = j * is - oy, j0 = Math.floor(fy), v = fy - j0;
+    for (let i = 0; i < NX; i++, idx++) {
+      const fx = i * is - ox, i0 = Math.floor(fx);
+      if (i0 < 0 || j0 < 0 || i0 >= NX - 1 || j0 >= NY - 1) { dst[idx] = 0; continue; }
+      const u = fx - i0, id = j0 * NX + i0;
+      dst[idx] = (src[id] + (src[id + 1] - src[id]) * u) * (1 - v) + (src[id + NX] + (src[id + NX + 1] - src[id + NX]) * u) * v;
+    }
+  }
+}
+function reproject(z0, tx0, ty0) {
+  const s = view.z / z0, dX = view.tx - tx0 * s, dY = view.ty - ty0 * s, is = 1 / s, ox = dX / (cell * s), oy = dY / (cell * s);
+  let t;
+  resample(U, S1, is, ox, oy); t = U; U = S1; S1 = t;
+  resample(Up, S1, is, ox, oy); t = Up; Up = S1; S1 = t;
+  if (hasTrail) { resample(Tr, S1, is, ox, oy); t = Tr; Tr = S1; S1 = t; }
+  if (hasStir) { resample(St, S1, is, ox, oy); t = St; St = S1; S1 = t; }
+  const K = CFG.TAIL;
+  for (let p = 0; p < PN; p++) {
+    if (px[p] < -900) continue;
+    if (s < 1 && rand() < 1 - s) { spawn(p, true); continue; }       // zooming out: re-seed so the newly revealed water is not empty
+    px[p] = px[p] * s + dX; py[p] = py[p] * s + dY; pvx[p] *= s; pvy[p] *= s;
+    for (let m = 0, o = p * K * 2; m < K; m++, o += 2) { phist[o] = phist[o] * s + dX; phist[o + 1] = phist[o + 1] * s + dY; }
+  }
+  ptr.stepX = ptr.stepX * s + dX; ptr.stepY = ptr.stepY * s + dY;
+  refreshStatic();
+}
+
+/* the parts of the field that only change when the view does: shelf → strait → bank profile, swell phase */
+function refreshStatic() {
+  const iz = 1 / view.z, us = CFG.STREAM_AXIS, a = 0.42, kx = Math.cos(a) * TAU / CFG.SWELL_LENGTH, ky = Math.sin(a) * TAU / CFG.SWELL_LENGTH;
+  for (let i = 0; i < NX; i++) {                     // first row: the profile is a function of x alone
+    const u = (i * cell - view.tx) * iz / W;
+    trend[i] = CFG.TREND * (u <= us ? -Math.cos(Math.PI * clamp(u / us, 0, 1)) : Math.cos(Math.PI * clamp(0.8 * (u - us) / (1 - us), 0, 1)));
+  }
+  for (let j = 0, idx = 0; j < NY; j++) {
+    const py_ = (j * cell - view.ty) * iz * ky - view.tx * iz * kx, dk = cell * iz * kx;
+    for (let i = 0; i < NX; i++, idx++) { trend[idx] = trend[i]; swPh[idx] = i * dk + py_; }
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   6 · LAYOUT  (everything that depends on the viewport)
    ════════════════════════════════════════════════════════════════════ */
 function sizeCanvas() {
-  dpr = Math.min(window.devicePixelRatio || 1, CFG.MAX_DPR) * quality;
-  dpr = Math.max(1, dpr);
+  dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, CFG.MAX_DPR) * quality);
   canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
   const d = Math.ceil((CFG.LENS_RADIUS * 1.25 + 4) * 2 * dpr);
   lensCanvas = document.createElement('canvas'); lensCanvas.width = lensCanvas.height = d;
   lensCtx = lensCanvas.getContext('2d');
 }
-
 function measureTitle() {
   const r = el.title.getBoundingClientRect(), p = Math.min(W, H) < 560 ? 22 : 44;
   titleRect = { x: r.left - p, y: r.top - p * 0.9, w: r.width + p * 2.3, h: r.height + p * 1.9 };
@@ -373,10 +485,13 @@ function layout() {
   // grid
   cell = Math.max(CFG.CELL, Math.sqrt(W * H / CFG.MAX_NODES));
   cols = Math.ceil(W / cell); rows = Math.ceil(H / cell); NX = cols + 1; NY = rows + 1; NN = NX * NY;
-  Hf = new Float32Array(NN); Nz = new Float32Array(NN); trend = new Float32Array(NN); swPh = new Float32Array(NN);
-  U = new Float32Array(NN); Up = new Float32Array(NN); Un = new Float32Array(NN);
-  Tr = new Float32Array(NN); St = new Float32Array(NN); sponge = new Float32Array(NN); Gx = new Float32Array(NN); Gy = new Float32Array(NN);
+  const F = () => new Float32Array(NN);
+  Hf = F(); Nz = F(); trend = F(); swPh = F(); U = F(); Up = F(); Un = F(); Tr = F(); St = F(); S1 = F(); sponge = F(); Gx = F(); Gy = F();
   hasTrail = hasStir = false;
+  CNX = ((NX - 1) >> 1) + 4; CNY = ((NY - 1) >> 1) + 4; Cz = new Float32Array(CNX * CNY); Ct = new Float32Array(CNY * NX);
+  for (let j = 0, idx = 0; j < NY; j++) for (let i = 0; i < NX; i++, idx++) {       // absorbing border, so swells leave the sheet
+    const e = Math.min(i, j, NX - 1 - i, NY - 1 - j); sponge[idx] = e >= 8 ? 1 : 0.9 + 0.1 * (e / 8);
+  }
   tintCanvas = document.createElement('canvas'); tintCanvas.width = NX; tintCanvas.height = NY;
   tintCtx = tintCanvas.getContext('2d'); tintImg = tintCtx.createImageData(NX, NY);
   for (let i = 3; i < tintImg.data.length; i += 4) tintImg.data[i] = 255;
@@ -398,68 +513,84 @@ function layout() {
   chart.M = chart.k / (chart.R * Math.cos(chart.phi0));
   chart.sigma = clamp(W * CFG.STREAM_WIDTH, 44, 128);
 
-  // static parts of the field: shelf → strait → bank profile, swell phase, absorbing border
-  const kx = Math.cos(0.42) * TAU / CFG.SWELL_LENGTH, ky = Math.sin(0.42) * TAU / CFG.SWELL_LENGTH;
-  for (let j = 0, idx = 0; j < NY; j++) for (let i = 0; i < NX; i++, idx++) {
-    const u = i * cell / W, us = CFG.STREAM_AXIS;
-    const tr = u <= us ? -Math.cos(Math.PI * clamp(u / us, 0, 1)) : Math.cos(Math.PI * 0.8 * (u - us) / (1 - us));
-    trend[idx] = CFG.TREND * tr;
-    swPh[idx] = i * cell * kx + j * cell * ky;
-    const e = Math.min(i, j, NX - 1 - i, NY - 1 - j);
-    sponge[idx] = e >= 8 ? 1 : 0.86 + 0.14 * (e / 8);
-  }
+  // the view opens on the home frame
+  view.z = view.zt = 1; view.cx = W / 2; view.cy = H / 2; view.tx = view.ty = 0; view.anchored = view.homing = view.moved = false;
+  setLOD(); refreshStatic();
 
   // furniture
-  measureTitle();
+  measureTitle(); buildVeil();
   compass.r = small ? 34 : 50;
   compass.x = W - chart.inset - compass.r - (small ? 22 : 34); compass.y = H - chart.inset - compass.r - (small ? 34 : 44);
-  const pxPerNm = chart.scale / Math.cos(chart.latC * D2R);
-  scaleBar.nm = W >= 720 ? 10 : 5; scaleBar.px = pxPerNm * scaleBar.nm;
+  scaleBar.max = W >= 720 ? 240 : 130;
   scaleBar.x = chart.inset + (small ? 20 : 34); scaleBar.y = H - chart.inset - (small ? 34 : 42);
 
-  buildVeil();
   buildEggs(eggR);
-  buildSoundings();
+  marks = [   // odd marks hiding among the soundings: the datum cross and two hints
+    { x: chart.miamiX, y: chart.miamiY, kind: 'datum' },
+    { x: eggs[1].x, y: eggs[1].y, kind: 'text', text: 'φ' },
+    { x: eggs[2].x, y: eggs[2].y, kind: 'text', text: '137.5°' },
+  ];
+  soundCache.clear();
+  // the ghost's whole course, kept as a figure to find when zoomed far out
+  lissPts = new Float32Array(1100 * 2);
+  for (let i = 0; i < 1100; i++) { ghostHome(i / 1100 * CFG.GHOST_PERIOD * 7, GP); lissPts[i * 2] = GP.x; lissPts[i * 2 + 1] = GP.y; }
   for (const b of buoys) { b.x = b.u * W; b.y = b.v * H; }
-  voronoiDirty = true;
+  rings.length = 0; track.t.fill(-1e9);
   initParticles();
 
-  for (let k = 0; k < 2; k++) computeNoise(k);
+  computeNoise();
   combineField();
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   6 · THE FIELD  (noise + trend + swell + waves + trails + turbulence + easter eggs)
+   7 · THE FIELD  (noise + trend + swell + water + trails + turbulence + easter eggs)
    ════════════════════════════════════════════════════════════════════ */
-function computeNoise(parity) {
-  // one half of the rows per step; the field moves far too slowly for that to show
-  const inv = 1 / CFG.NOISE_SCALE, z = fieldT * CFG.NOISE_SPEED, dy = fieldT * CFG.NOISE_DRIFT;
-  for (let j = parity; j < NY; j += 2) {
-    const y = (j * cell + dy) * inv; let idx = j * NX;
-    for (let i = 0; i < NX; i++, idx++) {
-      const x = i * cell * inv;
-      Nz[idx] = 0.56 * n3(x, y, z) + 0.26 * n3(x * 2.13 + 7.3, y * 2.13 - 3.1, z * 1.7) + 0.12 * n3(x * 4.37 - 11.2, y * 4.37 + 5.4, z * 2.5);
+/* The noise is smooth, so it is evaluated on every second node (in world coordinates) and brought up to the full
+   grid with a Catmull-Rom filter: a quarter of the simplex calls, and cheap enough to redo in full while zooming.
+   Coarse index I sits at fine index 2(I-1), which leaves the one-sample margin the filter needs. */
+function computeNoise() {
+  const inv = 1 / CFG.NOISE_SCALE, tz = fieldT * CFG.NOISE_SPEED, iz = 1 / view.z, o = view.oct, c2 = cell * 2;
+  const ox = -view.tx * iz, oy = -view.ty * iz + fieldT * CFG.NOISE_DRIFT, o0 = o[0], o1 = o[1], o2 = o[2], o3 = o[3], o4 = o[4];
+  for (let J = 0, n = 0; J < CNY; J++) {
+    const y = ((J - 1) * c2 * iz + oy) * inv;
+    for (let I = 0; I < CNX; I++, n++) {
+      const x = ((I - 1) * c2 * iz + ox) * inv;
+      let v = 0.56 * n3(x, y, tz) + 0.26 * n3(x * 2.13 + 7.3, y * 2.13 - 3.1, tz * 1.7);
+      if (o0 > 0) v += o0 * 0.42 * n3(x * 0.43 - 3.7, y * 0.43 + 8.2, tz * 0.6);          // the broad lie of the sea floor, seen from far out
+      if (o1 > 0) v += o1 * 0.12 * n3(x * 4.37 - 11.2, y * 4.37 + 5.4, tz * 2.5);
+      if (o2 > 0) v += o2 * 0.055 * n3(x * 9.1 + 2.9, y * 9.1 - 7.7, tz * 3.1);           // finer relief, surveyed as you close in
+      if (o3 > 0) v += o3 * 0.026 * n3(x * 18.9 - 5.1, y * 18.9 + 1.3, tz * 3.7);
+      if (o4 > 0) v += o4 * 0.012 * n3(x * 39.1 + 6.6, y * 39.1 - 2.2, tz * 4.2);
+      Cz[n] = v;
     }
+  }
+  for (let J = 0; J < CNY; J++) {                    // along rows
+    const r = J * CNX, q = J * NX;
+    for (let i = 0; i < NX; i++) {
+      const I = r + (i >> 1) + 1;
+      Ct[q + i] = i & 1 ? (9 * (Cz[I] + Cz[I + 1]) - Cz[I - 1] - Cz[I + 2]) * 0.0625 : Cz[I];
+    }
+  }
+  for (let j = 0, idx = 0; j < NY; j++) {            // then down columns
+    const q = ((j >> 1) + 1) * NX;
+    if (j & 1) for (let i = 0; i < NX; i++, idx++) Nz[idx] = (9 * (Ct[q + i] + Ct[q + NX + i]) - Ct[q - NX + i] - Ct[q + 2 * NX + i]) * 0.0625;
+    else for (let i = 0; i < NX; i++, idx++) Nz[idx] = Ct[q + i];
   }
 }
 
 function combineField() {
-  const ph = fieldT * TAU / CFG.SWELL_PERIOD, sw = CFG.SWELL_AMP, tg = CFG.TURBULENCE, tz = simT * 0.85;
+  const ph = fieldT * TAU / CFG.SWELL_PERIOD, sw = CFG.SWELL_AMP * Math.min(1, view.g), g = view.g, tg = CFG.TURBULENCE * g, tz = simT * 0.5;
   for (let j = 0, idx = 0; j < NY; j++) for (let i = 0; i < NX; i++, idx++) {
-    let h = trend[idx] + Nz[idx] + sw * Math.sin(swPh[idx] - ph) + U[idx] + Tr[idx];
+    let h = trend[idx] + Nz[idx] + sw * Math.sin(swPh[idx] - ph) + (U[idx] + Tr[idx]) * g;
     const s = St[idx];
     if (s > 0.004) h += s * tg * n3(i * cell / 72, j * cell / 72, tz);
     Hf[idx] = h;
   }
-  for (const e of eggs) {
-    if (e.w < 0.002) continue;
-    const { idxs, win, E } = e, w = e.w * e.w * (3 - 2 * e.w);
-    for (let n = 0; n < idxs.length; n++) { const id = idxs[n], a = w * win[n]; Hf[id] += (e.C + E[n] - Hf[id]) * a; }
-  }
+  for (const e of eggs) if (e.w >= 0.002) applyEgg(e);
   fieldDirty = true;
 }
 
-function sampleH(x, y) {
+function sampleH(x, y) {                    // screen px → field value
   const fx = clamp(x / cell, 0, cols - 0.001), fy = clamp(y / cell, 0, rows - 0.001);
   const i = fx | 0, j = fy | 0, u = fx - i, v = fy - j, id = j * NX + i;
   return lerp(lerp(Hf[id], Hf[id + 1], u), lerp(Hf[id + NX], Hf[id + NX + 1], u), v);
@@ -468,7 +599,7 @@ const depth01 = h => clamp((h + 1.4) / 2.8, 0, 1);
 const fathoms = h => 2.5 + 445 * Math.pow(depth01(h), 1.7);
 
 /* ════════════════════════════════════════════════════════════════════
-   7 · WAVES
+   8 · WATER
    ════════════════════════════════════════════════════════════════════ */
 function splat(F, x, y, sigmaCells, amp) {
   const gx = x / cell, gy = y / cell, r = Math.ceil(sigmaCells * 3), inv = 1 / (2 * sigmaCells * sigmaCells);
@@ -479,20 +610,20 @@ function splat(F, x, y, sigmaCells, amp) {
     F[j * NX + i] += amp * Math.exp(-(dx * dx + dy * dy) * inv);
   }
 }
+const waveSpeed = () => CFG.WAVE_SPEED * (REDUCED ? 0.6 : 1);
 
 function stepWaves() {
-  const ws = REDUCED ? 0.55 : 1;
-  const c = CFG.WAVE_SPEED * ws * STEP / cell, c2 = Math.min(0.48, c * c), dm = CFG.WAVE_DAMPING;
+  const c = waveSpeed() * STEP / cell, c2 = Math.min(0.48, c * c), dm = CFG.WAVE_DAMPING, rl = CFG.WAVE_RELAX;
   const dT = Math.exp(-STEP / CFG.TRAIL_LIFE), dS = Math.exp(-STEP / CFG.STIR_LIFE);
   let mT = 0, mS = 0;
   for (let j = 1; j < NY - 1; j++) {
     let idx = j * NX + 1;
     for (let i = 1; i < NX - 1; i++, idx++) {
       const u = U[idx];
-      Un[idx] = ((2 * u - Up[idx]) + c2 * (U[idx - 1] + U[idx + 1] + U[idx - NX] + U[idx + NX] - 4 * u)) * dm * sponge[idx];
+      Un[idx] = (u * rl + (u - Up[idx]) * dm + c2 * (U[idx - 1] + U[idx + 1] + U[idx - NX] + U[idx + NX] - 4 * u)) * sponge[idx];
       if (hasTrail) { const v = Tr[idx] * dT; Tr[idx] = v; if (v > mT) mT = v; }
       if (hasStir) {
-        const s = St[idx], v = (s + 0.1 * (St[idx - 1] + St[idx + 1] + St[idx - NX] + St[idx + NX] - 4 * s)) * dS;
+        const s = St[idx], v = (s + 0.06 * (St[idx - 1] + St[idx + 1] + St[idx - NX] + St[idx + NX] - 4 * s)) * dS;
         St[idx] = v; if (v > mS) mS = v;
       }
     }
@@ -509,29 +640,32 @@ function injectWake() {
   if (d < 0.02 || lens.alpha < 0.05) return;
   const v = d / STEP, soft = (ghost.on ? 0.75 : 1) * (REDUCED ? 0.6 : 1);
   const slow = Math.exp(-v / 260), fast = smooth(520, 1900, v);
-  const n = Math.max(1, Math.ceil(d / (cell * 0.7))), dd = Math.min(d, 34) / n;
+  const n = Math.max(1, Math.ceil(d / (cell * 1.4))), dd = Math.min(d, 40) / n;
   for (let s = 1; s <= n; s++) {
     const x = x0 + dx * s / n, y = y0 + dy * s / n;
-    splat(U, x, y, 2.1 + fast * 0.5, -CFG.WAKE_GAIN * dd * soft * (1 + fast * 0.4));
+    // a push on the water, not a dent in it: added to U alone it is momentum, so the surface sinks after the
+    // hull has passed, heaves back slowly, and the swell spreads out behind
+    splat(U, x, y, CFG.WAKE_RADIUS + fast, -CFG.WAKE_FORCE * dd * soft * (1 + fast * 0.5));
+    const bow = -CFG.WAKE_BOW * dd * soft;      // and a shallow dent under the hull itself, so the water answers at once
+    splat(U, x, y, CFG.WAKE_RADIUS * 0.6, bow); splat(Up, x, y, CFG.WAKE_RADIUS * 0.6, bow);
     if (slow > 0.05) { splat(Tr, x, y, 1.25, CFG.TRAIL_GAIN * dd * slow * soft); hasTrail = true; }
-    if (fast > 0.02) { splat(St, x, y, 3.4, CFG.STIR_GAIN * fast * soft / n); hasStir = true; }
+    if (fast > 0.02) { splat(St, x, y, 3.6, CFG.STIR_GAIN * fast * soft / n); hasStir = true; }
   }
   // remember the track (drawn as a faint plotted course)
-  const last = (track.head + track.n - 1) % track.n;
-  if (Math.hypot(ptr.sx - track.x[last], ptr.sy - track.y[last]) > 5 || simT - track.t[last] > 2) {
-    track.x[track.head] = ptr.sx; track.y[track.head] = ptr.sy; track.t[track.head] = simT; track.g[track.head] = ghost.on ? 1 : 0;
-    track.head = (track.head + 1) % track.n;
+  const last = (track.head + track.n - 1) % track.n, wx = toWX(ptr.sx), wy = toWY(ptr.sy);
+  if (Math.hypot(wx - track.x[last], wy - track.y[last]) * view.z > 5 || simT - track.t[last] > 2) {
+    track.x[track.head] = wx; track.y[track.head] = wy; track.t[track.head] = simT; track.head = (track.head + 1) % track.n;
   }
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   8 · THE GULF STREAM  (flow field + particles)
+   9 · THE GULF STREAM  (flow field in world coordinates + particles on screen)
    ════════════════════════════════════════════════════════════════════ */
 const axisX = (y, t) => { const v = y / H; return W * (CFG.STREAM_AXIS + 0.034 * Math.sin(v * 2.4 + t * 0.045) + 0.016 * Math.sin(v * 5.3 - t * 0.07 + 1.3)); };
 const axisDX = (y, t) => { const v = y / H; return (W / H) * (0.034 * 2.4 * Math.cos(v * 2.4 + t * 0.045) + 0.016 * 5.3 * Math.cos(v * 5.3 - t * 0.07 + 1.3)); };
 const FV = { x: 0, y: 0, jet: 0 };
 
-function flow(x, y, t, o) {
+function flow(x, y, t, o) {                 // world px → world px/s
   const s = (x - axisX(y, t)) / chart.sigma, jet = Math.exp(-0.5 * s * s), v = CFG.STREAM_SPEED * jet;
   // weak eddying background from the curl of a noise stream function, plus an inshore countercurrent
   const q = 1 / 430, e = 0.07, z = t * 0.02;
@@ -544,115 +678,109 @@ function flow(x, y, t, o) {
 
 function spawn(p, anywhere) {
   phl[p] = 0; pvx[p] = pvy[p] = 0; pstray[p] = 0;
-  if (pk[p] === 0) {                                 // stream particle
-    py[p] = anywhere ? rand() * (H + 60) - 30 : H + 12 + rand() * 26;
-    px[p] = axisX(py[p], simT) + gauss() * chart.sigma * 0.92;
-    plife[p] = 1e9;
-  } else {                                           // background drifter
-    px[p] = rand() * W; py[p] = rand() * H; plife[p] = 9 + rand() * 16;
+  const ys = anywhere ? rand() * (H + 60) - 30 : H + 12 + rand() * 26, yw = toWY(ys);
+  for (let k = 0; k < 4; k++) {
+    const xs = toSX(axisX(yw, simT) + gauss() * chart.sigma * 0.92);
+    if (xs > -30 && xs < W + 30) { px[p] = xs; py[p] = ys; return; }
   }
+  px[p] = -999; py[p] = ys;                 // the Stream is out of frame here: wait
 }
 
 function initParticles() {
   const n = REDUCED ? 0 : Math.round(clamp(CFG.PARTICLES * (W * H) / (1440 * 900), 260, 1500) * (quality < 0.6 ? 0.65 : 1));
-  PN = n; const K = CFG.TAIL;
+  PN = pAct = n; const K = CFG.TAIL;
   px = new Float32Array(n); py = new Float32Array(n); pvx = new Float32Array(n); pvy = new Float32Array(n);
-  pk = new Uint8Array(n); pstray = new Float32Array(n); plife = new Float32Array(n);
-  phist = new Float32Array(n * K * 2); phl = new Uint8Array(n); histHead = 0;
-  for (let p = 0; p < n; p++) { pk[p] = 0; spawn(p, true); }
+  pstray = new Float32Array(n); phist = new Float32Array(n * K * 2); phl = new Uint8Array(n); histHead = 0;
+  for (let p = 0; p < n; p++) spawn(p, true);
 }
 
 function stepParticles() {
   if (!PN) return;
-  const dt = STEP, t = simT, R = CFG.PUSH_RADIUS, R2 = R * R, cx = ptr.sx, cy = ptr.sy;
-  const pushV = lens.alpha * (ghost.on ? 14 : 24 + Math.min(ptr.spd, 1500) * 0.15);
-  const kWave = 1500 / (2 * cell), kUp = 1 - Math.exp(-dt / 0.22), kDown = 1 - Math.exp(-dt / 1.25);
+  const dt = STEP, t = simT, R = CFG.PUSH_RADIUS, R2 = R * R, cx = ptr.sx, cy = ptr.sy, z = view.z, iz = 1 / z;
+  const zs = Math.sqrt(z);                  // on screen the Stream quickens only gently as you close in, to keep its tempo
+  const pushV = lens.alpha * (ghost.on ? 12 : 20 + Math.min(ptr.spd, 1500) * 0.12);
+  const kWave = 2600 / (2 * cell), kUp = 1 - Math.exp(-dt / 0.5), kDown = 1 - Math.exp(-dt / 2.4);       // heavy water: slow to move, slow to settle
   const sample = stepCount % CFG.TAIL_EVERY === 0, K = CFG.TAIL;
   if (sample) histHead = (histHead + 1) % K;
-  for (let p = 0; p < PN; p++) {
+  // a narrow band on screen (zoomed out) needs fewer particles than a wide one
+  const act = Math.round(PN * Math.pow(clamp(z, CFG.ZOOM[0], 1), 0.8));
+  for (let p = act; p < pAct; p++) { phl[p] = 0; px[p] = -999; }
+  for (let p = pAct; p < act; p++) spawn(p, true);
+  pAct = act;
+  for (let p = 0; p < act; p++) {
     let x = px[p], y = py[p];
-    flow(x, y, t, FV);
+    if (x < -900) { if ((stepCount + p) % 24 === 0) spawn(p, true); continue; }
+    flow((x - view.tx) * iz, (y - view.ty) * iz, t, FV);
     const i = clamp(Math.round(x / cell), 1, NX - 2), j = clamp(Math.round(y / cell), 1, NY - 2), idx = j * NX + i;
     let tx = -(U[idx + 1] - U[idx - 1]) * kWave, ty = -(U[idx + NX] - U[idx - NX]) * kWave;
     const s = St[idx];
-    if (s > 0.01) { const a = n3(x / 64, y / 64, t * 0.6) * TAU * 1.6, m = Math.min(s, 1.2) * 95; tx += Math.cos(a) * m; ty += Math.sin(a) * m; }
+    if (s > 0.01) { const a = n3(x / 64, y / 64, t * 0.4) * TAU * 1.6, m = Math.min(s, 1.2) * 70; tx += Math.cos(a) * m; ty += Math.sin(a) * m; }
     const dx = x - cx, dy = y - cy, d2 = dx * dx + dy * dy;
     if (d2 < R2) { const d = Math.sqrt(d2) + 0.01; let f = 1 - d / R; f *= f * pushV; tx += dx / d * f; ty += dy / d * f; }
     const k = (tx * tx + ty * ty) > (pvx[p] * pvx[p] + pvy[p] * pvy[p]) ? kUp : kDown;
     pvx[p] += (tx - pvx[p]) * k; pvy[p] += (ty - pvy[p]) * k;
-    x += (FV.x + pvx[p]) * dt; y += (FV.y + pvy[p]) * dt;
+    x += (FV.x * zs + pvx[p]) * dt; y += (FV.y * zs + pvy[p]) * dt;
 
-    // lifecycle: tails shorten before a particle is recycled, so nothing pops
-    let dying = false;
-    if (pk[p] === 0) { pstray[p] = FV.jet < 0.1 ? pstray[p] + dt : 0; dying = pstray[p] > 3.5; }
-    else { plife[p] -= dt; dying = plife[p] < 0; }
+    // lifecycle: a particle that strays from the Stream has its tail shorten before it is recycled, so nothing pops
+    pstray[p] = FV.jet < 0.1 ? pstray[p] + dt : 0;
+    const dying = pstray[p] > 3.5;
     if (sample) {
       const o = (p * K + histHead) * 2; phist[o] = px[p]; phist[o + 1] = py[p];
       if (dying) { if (phl[p] > 0) phl[p]--; } else if (phl[p] < K) phl[p]++;
     }
-    if (dying) { if (phl[p] === 0) { spawn(p, pk[p] === 1); continue; } }
-    else { px[p] = x; py[p] = y; }
-    if (y < -34 || y > H + 44 || x < -34 || x > W + 34) spawn(p, false);
+    if (dying) { if (phl[p] === 0) spawn(p, false); continue; }
+    px[p] = x; py[p] = y;
+    if (y < -34 || y > H + 44 || x < -34 || x > W + 34) spawn(p, view.moved);
   }
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   9 · SOUNDINGS, VORONOI, BUOYS
+   10 · SOUNDINGS AND BUOYS
    ════════════════════════════════════════════════════════════════════ */
-function blocked(x, y, m) {
+/* Soundings are a hierarchy of jittered lattices in world space: level l has one candidate per cell of
+   SOUNDING_CELL / 2^l px and fades in around zoom 0.7 × 2^l, so closing in keeps revealing new depths. */
+const SP = { x: 0, y: 0, h: 0 }, SQ = { x: 0, y: 0, h: 0 };
+const soundingZoom = l => 0.7 * Math.pow(2, l);
+function cellPoint(l, i, j, o) {
+  const h = hash3(i, j, l * 3 + 11); if (h > 0.8) return false;
+  const c = CFG.SOUNDING_CELL / Math.pow(2, l);
+  o.x = (i + 0.2 + 0.6 * hash3(i, j, l * 3 + 12)) * c; o.y = (j + 0.2 + 0.6 * hash3(i, j, l * 3 + 13)) * c; o.h = h / 0.8;
+  return true;
+}
+function soundingAt(l, i, j, o) {
+  if (!cellPoint(l, i, j, o)) return false;
+  const zl = soundingZoom(l);
+  for (let k = l - 1; k >= Math.max(-2, l - 2); k--) {       // give way to coarser soundings already on the chart
+    const c = CFG.SOUNDING_CELL / Math.pow(2, k);
+    if (cellPoint(k, Math.floor(o.x / c), Math.floor(o.y / c), SQ) && Math.hypot(SQ.x - o.x, SQ.y - o.y) * zl < 38) return false;
+  }
+  for (const m of marks) if (Math.hypot(m.x - o.x, m.y - o.y) * Math.max(zl, 0.7) < 42) return false;
+  return true;
+}
+
+/* where chart furniture sits, soundings fade out rather than collide */
+function zoneAlpha(x, y) {
+  const t = titleRect, m = chart.inset, side = W < 560 ? 50 : 62;
+  let a = smooth(m + 14, m + 40, Math.min(y, H - y)) * smooth(m + side, m + side + 28, Math.min(x, W - x));
+  if (a <= 0) return 0;
+  a *= smooth(0, 26, Math.hypot(Math.max(t.x + 14 - x, 0, x - (t.x + t.w - 14)), Math.max(t.y + 14 - y, 0, y - (t.y + t.h - 14))));
+  a *= smooth(compass.r + 20, compass.r + 46, Math.hypot(x - compass.x, y - compass.y));
+  a *= smooth(0, 24, Math.max(x - (scaleBar.x + scaleBar.max + 40), scaleBar.y - 34 - y));
+  return a;
+}
+function blocked(x, y, m) {                 // hard version, for border labels
   const t = titleRect;
   if (x > t.x + 14 - m && x < t.x + t.w - 14 + m && y > t.y + 14 - m && y < t.y + t.h - 14 + m) return true;
   if (Math.hypot(x - compass.x, y - compass.y) < compass.r + 26 + m) return true;
-  if (x < scaleBar.x + scaleBar.px + 40 + m && y > scaleBar.y - 34 - m) return true;
+  if (x < scaleBar.x + scaleBar.max + 40 + m && y > scaleBar.y - 34 - m) return true;
   return false;
 }
 
-function buildSoundings() {
-  const r = mulberry32(8019), target = clamp(Math.round(W * H / CFG.SOUNDING_AREA), 12, 48);
-  const minD = Math.sqrt(W * H / (target * 1.5)), edge = chart.inset + 38, side = chart.inset + (W < 560 ? 72 : 84);
-  // odd marks hiding among the soundings: the datum cross and two hints
-  marks = [
-    { x: chart.miamiX, y: chart.miamiY, kind: 'datum' },
-    { x: eggs[1].x, y: eggs[1].y, kind: 'text', text: 'φ' },
-    { x: eggs[2].x, y: eggs[2].y, kind: 'text', text: '137.5°' },
-  ];
-  soundings = [];
-  for (let tries = 0; tries < 5000 && soundings.length < target; tries++) {
-    const x = side + r() * (W - 2 * side), y = edge + r() * (H - 2 * edge);
-    if (blocked(x, y, 14)) continue;
-    let ok = true;
-    for (const s of soundings) if (Math.hypot(s.x - x, s.y - y) < minD) { ok = false; break; }
-    for (const m of marks) if (Math.hypot(m.x - x, m.y - y) < 46) { ok = false; break; }
-    if (ok) soundings.push({ x, y, fm: -1, shown: -1, phase: r() });
-  }
-}
-
-function buildVoronoi() {
-  const sites = soundings.concat(buoys.filter(b => !b.dead)), m = 60;
-  voronoi = [];
-  for (let i = 0; i < sites.length; i++) {
-    const a = sites[i]; let poly = [[-m, -m], [W + m, -m], [W + m, H + m], [-m, H + m]];
-    for (let j = 0; j < sites.length && poly.length > 2; j++) {
-      if (j === i) continue;
-      const b = sites[j], nx = b.x - a.x, ny = b.y - a.y, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, out = [];
-      for (let k = 0; k < poly.length; k++) {
-        const A = poly[k], B = poly[(k + 1) % poly.length];
-        const da = (A[0] - mx) * nx + (A[1] - my) * ny, db = (B[0] - mx) * nx + (B[1] - my) * ny;
-        if (da <= 0) out.push(A);
-        if ((da < 0 && db > 0) || (da > 0 && db < 0)) { const t = da / (da - db); out.push([A[0] + t * (B[0] - A[0]), A[1] + t * (B[1] - A[1])]); }
-      }
-      poly = out;
-    }
-    if (poly.length > 2) voronoi.push(poly);
-  }
-  voronoiDirty = false;
-}
-
-function dropBuoy(x, y) {
+function dropBuoy(sx, sy) {
+  const x = toWX(sx), y = toWY(sy);
   buoys.push({ x, y, u: x / W, v: y / H, n: 0, next: simT, alpha: 0, dead: false, fm: -1 });
   let live = 0; for (const b of buoys) if (!b.dead) live++;
   for (const b of buoys) { if (live <= CFG.BUOY_MAX) break; if (!b.dead) { b.dead = true; live--; } }
-  voronoiDirty = true;
   lens.prev = lens.cur; lens.cur = (lens.cur + 1) % 3; lens.mix = 0; lens.auto = 0;
 }
 
@@ -662,17 +790,21 @@ function stepBuoys() {
     b.alpha = damp(b.alpha, b.dead ? 0 : 1, b.dead ? 0.9 : 0.5, STEP);
     if (b.dead) { if (b.alpha < 0.01) buoys.splice(i, 1); continue; }
     if (simT >= b.next) {
-      const amp = (b.n === 0 ? CFG.BUOY_PULSE : b.n < 6 ? CFG.BUOY_PULSE * 0.55 * Math.pow(0.74, b.n) : CFG.BUOY_PULSE * 0.12) * (REDUCED ? 0.6 : 1);
-      splat(U, b.x, b.y, 1.75, amp);
-      rings.push({ x: b.x, y: b.y, t0: simT, a: Math.min(1, amp / CFG.BUOY_PULSE) });
-      b.n++; b.next = simT + (b.n < 6 ? 1.9 : 7 + rand() * 4);
+      const sx = toSX(b.x), sy = toSY(b.y);
+      const amp = (b.n === 0 ? CFG.BUOY_PULSE : b.n < 5 ? CFG.BUOY_PULSE * 0.6 * Math.pow(0.72, b.n) : CFG.BUOY_PULSE * 0.14) * (REDUCED ? 0.6 : 1);
+      if (sx > -60 && sx < W + 60 && sy > -60 && sy < H + 60) {
+        splat(U, sx, sy, 3, amp); splat(Up, sx, sy, 3, amp);          // a mound of water set down at rest; it collapses into a ring
+        rings.push({ x: b.x, y: b.y, r: 3 * cell / view.z, age: 0, a: Math.min(1, amp / CFG.BUOY_PULSE) });
+      }
+      b.n++; b.next = simT + (b.n < 5 ? 3.4 : 11 + rand() * 6);
     }
   }
-  for (let i = rings.length - 1; i >= 0; i--) if (simT - rings[i].t0 > 9) rings.splice(i, 1);
+  const grow = waveSpeed() * STEP / view.z;                           // rings keep pace with the swell they mark
+  for (let i = rings.length - 1; i >= 0; i--) { const r = rings[i]; r.r += grow; r.age += STEP; if (r.age > 16) rings.splice(i, 1); }
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   10 · EASTER EGGS  (fields the contours briefly resolve into)
+   11 · EASTER EGGS  (fields the contours briefly resolve into)
    ════════════════════════════════════════════════════════════════════ */
 const FLORIDA = [[-87.6,30.99],[-86.5,30.99],[-85,31],[-84.86,30.71],[-83.6,30.65],[-82.21,30.57],[-82.05,30.36],[-81.95,30.78],[-81.44,30.71],
   [-81.38,30.25],[-81.26,29.8],[-81.05,29.3],[-80.8,28.85],[-80.53,28.46],[-80.6,28.15],[-80.36,27.6],[-80.15,27.15],[-80.03,26.75],[-80.08,26.2],
@@ -681,6 +813,7 @@ const FLORIDA = [[-87.6,30.99],[-86.5,30.99],[-85,31],[-84.86,30.71],[-83.6,30.6
   [-82.72,28.55],[-82.7,28.95],[-83.05,29.15],[-83.4,29.65],[-83.9,30.05],[-84.3,30.08],[-84.4,29.92],[-85,29.62],[-85.38,29.7],[-85.6,30.05],
   [-86.3,30.37],[-87.2,30.33],[-87.5,30.28],[-87.45,30.55]];
 const KEYS = [[-80.38,25.2],[-80.62,24.92],[-81.1,24.71],[-81.8,24.55]];
+const EGG_TEX = 168;
 
 function segDist(px_, py_, ax, ay, bx, by) {
   const vx = bx - ax, vy = by - ay, wx = px_ - ax, wy = py_ - ay;
@@ -689,17 +822,12 @@ function segDist(px_, py_, ax, ay, bx, by) {
 }
 
 function buildEggs(R) {
-  const step = CFG.LEVEL_STEP;
+  const step = CFG.LEVEL_STEP, N = EGG_TEX;
+  // each egg's field is baked once into a small texture over [-R, R]² in world space, then sampled wherever the view is
   const mk = (x, y, plateau, fn) => {
-    const idxs = [], win = [], E = [];
-    const i0 = Math.max(0, Math.floor((x - R) / cell)), i1 = Math.min(NX - 1, Math.ceil((x + R) / cell));
-    const j0 = Math.max(0, Math.floor((y - R) / cell)), j1 = Math.min(NY - 1, Math.ceil((y + R) / cell));
-    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-      const dx = i * cell - x, dy = j * cell - y, r = Math.hypot(dx, dy);
-      if (r >= R) continue;
-      idxs.push(j * NX + i); win.push(smooth(R, R * plateau, r)); E.push(fn(dx, dy, r));
-    }
-    return { x, y, R, w: 0, C: 0, idxs: Uint32Array.from(idxs), win: Float32Array.from(win), E: Float32Array.from(E) };
+    const tex = new Float32Array(N * N);
+    for (let j = 0, n = 0; j < N; j++) for (let i = 0; i < N; i++, n++) tex[n] = fn((i / (N - 1) * 2 - 1) * R, (j / (N - 1) * 2 - 1) * R);
+    return { x, y, R, plateau, tex, w: 0, C: 0, hold: 0 };
   };
 
   // Florida: signed distance to the coastline, so the isolines nest around the peninsula
@@ -738,10 +866,10 @@ function buildEggs(R) {
   spiral.sq = sq;
 
   // Phyllotaxis: 55 seeds at the golden angle, each a small mound
-  const N = 55, c = 0.92 * R / Math.sqrt(N), sg = 0.31 * c * 1.77, seeds = [];
-  for (let n = 1; n <= N; n++) { const r = c * Math.sqrt(n - 0.5), a = n * 2.399963; seeds.push([r * Math.cos(a), r * Math.sin(a)]); }
+  const NS = 55, c = 0.92 * R / Math.sqrt(NS), sg = 0.31 * c * 1.77, seeds = [];
+  for (let n = 1; n <= NS; n++) { const r = c * Math.sqrt(n - 0.5), a = n * 2.399963; seeds.push([r * Math.cos(a), r * Math.sin(a)]); }
   const phyllo = mk(W * 0.56, H * 0.27, 0.72, (x, y) => {
-    let v = 0; for (const q of seeds) { const dx = x - q[0], dy = y - q[1]; v += Math.exp(-(dx * dx + dy * dy) / (2 * sg * sg)); }
+    let v = 0; for (const q of seeds) { const dx = x - q[0], dy = y - q[1], d2 = dx * dx + dy * dy; if (d2 < 9 * sg * sg) v += Math.exp(-d2 / (2 * sg * sg)); }
     return step * (-0.9 + 2.5 * Math.min(v, 1.2));
   });
   phyllo.seeds = seeds;
@@ -749,27 +877,79 @@ function buildEggs(R) {
   eggs = [florida, spiral, phyllo];
 }
 
+function applyEgg(e) {
+  const z = view.z, iz = 1 / z, R = e.R, N = EGG_TEX, w = e.w * e.w * (3 - 2 * e.w), k = (N - 1) / (2 * R), g = view.g;
+  const i0 = Math.max(0, Math.floor(toSX(e.x - R) / cell)), i1 = Math.min(NX - 1, Math.ceil(toSX(e.x + R) / cell));
+  const j0 = Math.max(0, Math.floor(toSY(e.y - R) / cell)), j1 = Math.min(NY - 1, Math.ceil(toSY(e.y + R) / cell));
+  for (let j = j0; j <= j1; j++) {
+    const dy = (j * cell - view.ty) * iz - e.y;
+    for (let i = i0; i <= i1; i++) {
+      const dx = (i * cell - view.tx) * iz - e.x, r = Math.hypot(dx, dy);
+      if (r >= R) continue;
+      const fu = (dx + R) * k, fv = (dy + R) * k, u0 = Math.min(N - 2, fu | 0), v0 = Math.min(N - 2, fv | 0), u = fu - u0, v = fv - v0, n = v0 * N + u0;
+      const E = (e.tex[n] + (e.tex[n + 1] - e.tex[n]) * u) * (1 - v) + (e.tex[n + N] + (e.tex[n + N + 1] - e.tex[n + N]) * u) * v;
+      const id = j * NX + i;
+      Hf[id] += (e.C + E * g - Hf[id]) * w * smooth(R, R * e.plateau, r);
+    }
+  }
+}
+
 function stepEggs() {
   for (const e of eggs) {
-    const near = lens.alpha > 0.3 && Math.hypot(ptr.sx - e.x, ptr.sy - e.y) < CFG.EGG_TRIGGER && ptr.spd < 420;
-    if (near && e.w < 0.002) e.C = Math.round(sampleH(e.x, e.y) / CFG.LEVEL_STEP) * CFG.LEVEL_STEP + 0.001 * CFG.LEVEL_STEP;
-    e.hold = near ? 1.6 : Math.max(0, (e.hold || 0) - STEP);
+    const sx = toSX(e.x), sy = toSY(e.y);
+    const near = lens.alpha > 0.3 && Math.hypot(ptr.sx - sx, ptr.sy - sy) < CFG.EGG_TRIGGER && ptr.spd < 420;
+    if (near && e.w < 0.002) e.C = Math.round(sampleH(sx, sy) / view.coarse) * view.coarse;
+    e.hold = near ? 1.6 : Math.max(0, e.hold - STEP);
     e.w = damp(e.w, e.hold > 0 ? 1 : 0, e.hold > 0 ? 0.75 : 1.5, STEP);
     if (e.w < 0.001) e.w = 0;
   }
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   11 · INPUT
+   12 · SUN AND EDITION  (the chart keeps Miami's daylight)
    ════════════════════════════════════════════════════════════════════ */
-function ghostPoint(t, o) {
-  const w = TAU / CFG.GHOST_PERIOD * (REDUCED ? 0.5 : 1);
-  o.x = W * 0.5 + W * 0.34 * Math.sin(w * t + 0.9);
-  o.y = H * 0.53 + H * 0.3 * Math.sin(w * PHI * t + 2.2);   // golden frequency ratio: the path never closes
+const sunUpAt = ms => sunElevation(ms, CFG.MIAMI.lat, CFG.MIAMI.lon) > CFG.SUN_HORIZON;
+function miamiTime(ms) {
+  try { return new Intl.DateTimeFormat('en-US', { timeZone: CFG.TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short' }).format(ms).replace(/^24/, '00'); }
+  catch (_) { return new Date(ms).toISOString().slice(11, 16) + ' UTC'; }
 }
-const GP = { x: 0, y: 0 };
+function applyEdition(instant) {
+  const v = sun.override == null ? (sun.up ? 1 : 0) : sun.override;
+  edition.target = v; if (instant) edition.p = v;
+  root.dataset.edition = v ? 'day' : 'night';
+  el.ed.textContent = (v ? 'Day edition' : 'Night edition') + (sun.override == null && sun.next ? ` · ${sun.up ? 'sunset' : 'sunrise'} ${miamiTime(sun.next)}` : '');
+}
+function watchSun(first) {
+  const now = Date.now(), up = sunUpAt(now);
+  if (!first && up === sun.up) return;
+  sun.up = up; sun.next = 0;
+  for (let m = 1; m <= 1500; m++) if (sunUpAt(now + m * 60000) !== up) { sun.next = now + m * 60000; break; }
+  if (!first) { sun.override = null; edition.tau = 5; }        // sunrise or sunset: the chart turns over slowly, and follows the sun again
+  applyEdition(first);
+}
+function toggleEdition() {
+  const v = edition.target ? 0 : 1;
+  sun.override = v === (sun.up ? 1 : 0) ? null : v;            // toggling back to what the sky says resumes following it
+  edition.tau = 0.5; applyEdition(false);
+}
+function toggleProjection() { proj.target = proj.target ? 0 : 1; el.proj.textContent = proj.target ? 'Orthographic projection' : 'Mercator projection'; }
 
-function arrive(x, y) {             // the cursor appears somewhere new: leave an echo, fade the lens back in
+/* ════════════════════════════════════════════════════════════════════
+   13 · INPUT
+   ════════════════════════════════════════════════════════════════════ */
+const GP = { x: 0, y: 0 };
+function ghostHome(t, o) {                  // the ghost's course in the opening frame
+  const w = TAU / CFG.GHOST_PERIOD;
+  o.x = W * 0.5 + W * 0.34 * Math.sin(w * t + 0.9);
+  o.y = H * 0.53 + H * 0.3 * Math.sin(w * PHI * t + 2.2);     // golden frequency ratio: the path never closes
+}
+function ghostPoint(t, o) {                 // on screen: it sails that course when zoomed out, and stays in view when zoomed in
+  ghostHome(t * (REDUCED ? 0.5 : 1), o);
+  const b = smooth(0.7, 1, view.z);
+  o.x = lerp(toSX(o.x), o.x, b); o.y = lerp(toSY(o.y), o.y, b);
+}
+
+function arrive(x, y) {                     // the cursor appears somewhere new: leave an echo, fade the lens back in
   if (lens.alpha > 0.05) lens.echo = { x: ptr.sx, y: ptr.sy, a: lens.alpha * 0.5, r: lens.r };
   ptr.tx = ptr.sx = ptr.stepX = x; ptr.ty = ptr.sy = ptr.stepY = y; ptr.vx = ptr.vy = 0; ptr.spd = 0;
   lens.alpha = 0;
@@ -778,42 +958,68 @@ function onInput(x, y, type) {
   if (ghost.on || !ptr.present || (type === 'touch' && !ptr.down && Math.hypot(x - ptr.sx, y - ptr.sy) > 70)) arrive(x, y);
   ptr.tx = x; ptr.ty = y; ptr.present = true; ptr.type = type; ptr.lastInput = performance.now(); ghost.on = false;
 }
+function pinchState() {
+  const [a, b] = [...pinch.pts.values()];
+  return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+}
 
-addEventListener('pointermove', e => { if (e.isPrimary) onInput(e.clientX, e.clientY, e.pointerType); }, { passive: true });
+addEventListener('pointermove', e => {
+  if (e.pointerType === 'touch' && pinch.pts.has(e.pointerId)) {
+    pinch.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch.on && pinch.pts.size === 2) {                   // two fingers: zoom about their midpoint and drag the chart with it
+      const s = pinchState();
+      view.homing = false; view.wax = toWX(pinch.mx); view.way = toWY(pinch.my); view.ax = s.mx; view.ay = s.my; view.anchored = true;
+      view.zt = clamp(view.zt * s.d / pinch.d, CFG.ZOOM[0], CFG.ZOOM[1]);
+      pinch.d = s.d; pinch.mx = s.mx; pinch.my = s.my; ptr.lastInput = performance.now();
+      return;
+    }
+  }
+  if (e.isPrimary && !pinch.on) onInput(e.clientX, e.clientY, e.pointerType);
+}, { passive: true });
 addEventListener('pointerdown', e => {
-  if (!e.isPrimary || (e.target.closest && e.target.closest('button, a'))) return;
+  if (e.target.closest && e.target.closest('button, a')) return;
+  if (e.pointerType === 'touch') {
+    pinch.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch.pts.size === 2) { const s = pinchState(); pinch.on = true; pinch.d = s.d; pinch.mx = s.mx; pinch.my = s.my; ptr.down = false; return; }
+  }
+  if (!e.isPrimary) return;
   onInput(e.clientX, e.clientY, e.pointerType);
   ptr.down = true; ptr.downX = e.clientX; ptr.downY = e.clientY; ptr.downT = performance.now();
 });
-addEventListener('pointerup', e => {
+function pointerEnd(e) {
+  pinch.pts.delete(e.pointerId);
+  if (pinch.on) { if (pinch.pts.size < 2) pinch.on = false; ptr.down = false; return; }
   if (!e.isPrimary || !ptr.down) return;
   ptr.down = false; ptr.lastInput = performance.now();
-  if (Math.hypot(e.clientX - ptr.downX, e.clientY - ptr.downY) < 12 && performance.now() - ptr.downT < 450) dropBuoy(e.clientX, e.clientY);
-});
-addEventListener('pointercancel', () => { ptr.down = false; });
+  if (e.type === 'pointerup' && Math.hypot(e.clientX - ptr.downX, e.clientY - ptr.downY) < 12 && performance.now() - ptr.downT < 450) dropBuoy(e.clientX, e.clientY);
+}
+addEventListener('pointerup', pointerEnd);
+addEventListener('pointercancel', pointerEnd);
 root.addEventListener('pointerleave', () => { ptr.present = false; });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 
-function toggleProjection() { proj.target = proj.target ? 0 : 1; el.proj.textContent = proj.target ? 'Orthographic projection' : 'Mercator projection'; }
-function setEdition(v, instant) {
-  edition.target = v; if (instant) edition.p = v;
-  root.dataset.edition = v ? 'paper' : 'night';
-  el.ed.textContent = v ? 'Paper edition' : 'Night edition';
-  try { localStorage.setItem('anton-miami-edition', v ? 'paper' : 'night'); } catch (_) {}
-}
+addEventListener('wheel', e => {
+  e.preventDefault();
+  const d = e.deltaMode === 1 ? e.deltaY * 18 : e.deltaMode === 2 ? e.deltaY * H : e.deltaY;
+  zoomAt(e.clientX, e.clientY, Math.exp(-clamp(d, -160, 160) * (e.ctrlKey ? CFG.ZOOM_RATE * 5 : CFG.ZOOM_RATE)));   // ctrl+wheel is a trackpad pinch
+  onInput(e.clientX, e.clientY, 'mouse');
+}, { passive: false });
+
 el.proj.addEventListener('click', toggleProjection);
-el.ed.addEventListener('click', () => setEdition(edition.target ? 0 : 1));
+el.ed.addEventListener('click', toggleEdition);
+el.scale.addEventListener('click', goHome);
 addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key.toLowerCase();
   if (k === 'g') toggleProjection();
-  else if (k === 'l') setEdition(edition.target ? 0 : 1);
+  else if (k === 'l') toggleEdition();
+  else if (k === '0' || k === 'home') goHome();
   else if (k === 'f') { try { (document.fullscreenElement ? document.exitFullscreen() : root.requestFullscreen()).catch(() => {}); } catch (_) {} }
 });
 
 function updateInput(dt) {
   const now = performance.now();
-  if (!ghost.on && !ptr.down && now - ptr.lastInput > CFG.IDLE_AFTER * 1000) {
+  if (!ghost.on && !ptr.down && !pinch.on && now - ptr.lastInput > CFG.IDLE_AFTER * 1000) {
     ghost.on = true; ghost.blend = 0; ghost.ax = ptr.sx; ghost.ay = ptr.sy; ptr.present = false;
   }
   if (ghost.on) {
@@ -838,18 +1044,19 @@ function updateInput(dt) {
   lens.r = damp(lens.r, chart.lensR * (1.12 - 0.34 * smooth(150, 1500, ptr.spd)), 0.4, dt);
   lens.mix = Math.min(1, lens.mix + dt / 0.9);
   if (lens.echo) { lens.echo.a -= dt * 1.4; if (lens.echo.a <= 0) lens.echo = null; }
+  scaleBar.alpha = damp(scaleBar.alpha, 1, 0.35, dt);
 
   proj.p = damp(proj.p, proj.target, 0.55, dt); if (Math.abs(proj.p - proj.target) < 0.0004) proj.p = proj.target;
   proj.e = proj.p * proj.p * (3 - 2 * proj.p);
-  const ep = edition.p; edition.p = damp(edition.p, edition.target, 0.5, dt); if (Math.abs(edition.p - edition.target) < 0.002) edition.p = edition.target;
+  const ep = edition.p; edition.p = damp(edition.p, edition.target, edition.tau, dt); if (Math.abs(edition.p - edition.target) < 0.002) edition.p = edition.target;
   if (ep !== edition.p || !col) buildPalette();
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   12 · RENDERING
+   14 · RENDERING
    ════════════════════════════════════════════════════════════════════ */
 function buildPalette() {
-  const a = CFG.PALETTE.night, b = CFG.PALETTE.paper, t = edition.p * edition.p * (3 - 2 * edition.p);
+  const a = CFG.PALETTE.night, b = CFG.PALETTE.day, t = edition.p * edition.p * (3 - 2 * edition.p);
   col = { deep: mix3(a.deep, b.deep, t), shoal: mix3(a.shoal, b.shoal, t), line: mix3(a.line, b.line, t),
           chalk: mix3(a.chalk, b.chalk, t), accent: mix3(a.accent, b.accent, t), gain: lerp(a.gain, b.gain, t) };
   col.mid = mix3(col.line, col.chalk, 0.4); col.far = mix3(col.line, col.chalk, 0.62); col.bg = mix3(col.shoal, col.deep, 0.6);
@@ -860,16 +1067,34 @@ function buildPalette() {
 }
 const A = a => a * col.gain;                      // ink on paper needs a little more weight than chalk on navy
 const LW = w => Math.max(w, 0.85 / dpr);
+const band = (z0, z1) => (z0 > 0 ? smooth(z0, z0 * 1.3, view.z) : 1) * (z1 > 0 ? 1 - smooth(z1 / 1.3, z1, view.z) : 1);   // visible between two zooms
 
 function drawTint() {
   const d = tintImg.data;
   for (let i = 0, o = 0; i < NN; i++, o += 4) {
-    const v = (depth01(Hf[i]) * 255) | 0, q = v * 3;
+    const q = ((depth01(Hf[i]) * 255) | 0) * 3;
     d[o] = tintLUT[q]; d[o + 1] = tintLUT[q + 1]; d[o + 2] = tintLUT[q + 2];
   }
   tintCtx.putImageData(tintImg, 0, 0);
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(tintCanvas, -cell / 2, -cell / 2, NX * cell, NY * cell);
+}
+
+/* behind the title block the linework is knocked back with a feathered patch of the water tint itself */
+function buildVeil() {
+  const t = titleRect, s = 0.5, w = Math.ceil(t.w * s), h = Math.ceil(t.h * s);
+  veilCanvas = document.createElement('canvas'); veilCanvas.width = w; veilCanvas.height = h; veilCtx = veilCanvas.getContext('2d');
+  veilMask = document.createElement('canvas'); veilMask.width = w; veilMask.height = h;
+  const m = veilMask.getContext('2d'), n = 14, f = Math.min(w, h) * 0.3;
+  m.fillStyle = 'rgba(0,0,0,0.2)';
+  for (let i = 0; i < n; i++) { const d = f * (1 - i / n); m.beginPath(); m.roundRect ? m.roundRect(d, d, w - 2 * d, h - 2 * d, Math.max(2, f - d * 0.5)) : m.rect(d, d, w - 2 * d, h - 2 * d); m.fill(); }
+}
+function drawVeil() {
+  const t = titleRect, c = veilCtx, w = veilCanvas.width, k = w / t.w;
+  c.globalCompositeOperation = 'copy'; c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+  c.drawImage(tintCanvas, (-cell / 2 - t.x) * k, (-cell / 2 - t.y) * k, NX * cell * k, NY * cell * k);
+  c.globalCompositeOperation = 'destination-in'; c.drawImage(veilMask, 0, 0);
+  ctx.globalAlpha = 0.9; ctx.drawImage(veilCanvas, t.x, t.y, t.w, t.h); ctx.globalAlpha = 1;
 }
 
 /* Marching squares. Each crossing also carries the field gradient there, shared by the two cells that meet
@@ -891,39 +1116,24 @@ function emit(bk, e1, e2) {
   const buf = segBuf[bk], o = n * 8, dx = EQ.x - EP.x, dy = EQ.y - EP.y, L = Math.hypot(dx, dy) || 1e-6, ux = dx / L, uy = dy / L, k = L * 0.33;
   // tangent = gradient turned a quarter, pointed along the chord; eased back to the chord where the two disagree
   let tx = -EP.gy, ty = EP.gx, m = Math.hypot(tx, ty), dot;
-  if (m > 1e-7) { tx /= m; ty /= m; dot = tx * ux + ty * uy; if (dot < 0) { tx = -tx; ty = -ty; dot = -dot; } const w = smooth(0.25, 0.8, dot); tx = ux + (tx - ux) * w; ty = uy + (ty - uy) * w; } else { tx = ux; ty = uy; }
+  if (m > 1e-9) { tx /= m; ty /= m; dot = tx * ux + ty * uy; if (dot < 0) { tx = -tx; ty = -ty; dot = -dot; } const w = smooth(0.25, 0.8, dot); tx = ux + (tx - ux) * w; ty = uy + (ty - uy) * w; } else { tx = ux; ty = uy; }
   buf[o] = EP.x; buf[o + 1] = EP.y; buf[o + 2] = EP.x + tx * k; buf[o + 3] = EP.y + ty * k;
   tx = -EQ.gy; ty = EQ.gx; m = Math.hypot(tx, ty);
-  if (m > 1e-7) { tx /= m; ty /= m; dot = tx * ux + ty * uy; if (dot < 0) { tx = -tx; ty = -ty; dot = -dot; } const w = smooth(0.25, 0.8, dot); tx = ux + (tx - ux) * w; ty = uy + (ty - uy) * w; } else { tx = ux; ty = uy; }
+  if (m > 1e-9) { tx /= m; ty /= m; dot = tx * ux + ty * uy; if (dot < 0) { tx = -tx; ty = -ty; dot = -dot; } const w = smooth(0.25, 0.8, dot); tx = ux + (tx - ux) * w; ty = uy + (ty - uy) * w; } else { tx = ux; ty = uy; }
   buf[o + 4] = EQ.x - tx * k; buf[o + 5] = EQ.y - ty * k; buf[o + 6] = EQ.x; buf[o + 7] = EQ.y;
   segN[bk] = n + 1;
 }
 
-/* behind the title block the linework is knocked back with a feathered patch of the water tint itself */
-function buildVeil() {
-  const t = titleRect, s = 0.5, w = Math.ceil(t.w * s), h = Math.ceil(t.h * s);
-  veilCanvas = document.createElement('canvas'); veilCanvas.width = w; veilCanvas.height = h; veilCtx = veilCanvas.getContext('2d');
-  veilMask = document.createElement('canvas'); veilMask.width = w; veilMask.height = h;
-  const m = veilMask.getContext('2d'), n = 14, f = Math.min(w, h) * 0.3;
-  m.fillStyle = 'rgba(0,0,0,0.2)';
-  for (let i = 0; i < n; i++) { const d = f * (1 - i / n); m.beginPath(); m.roundRect ? m.roundRect(d, d, w - 2 * d, h - 2 * d, Math.max(2, f - d * 0.5)) : m.rect(d, d, w - 2 * d, h - 2 * d); m.fill(); }
-}
-function drawVeil() {
-  const t = titleRect, c = veilCtx, w = veilCanvas.width, h = veilCanvas.height, k = w / t.w;
-  c.globalCompositeOperation = 'copy'; c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
-  c.drawImage(tintCanvas, (-cell / 2 - t.x) * k, (-cell / 2 - t.y) * k, NX * cell * k, NY * cell * k);
-  c.globalCompositeOperation = 'destination-in'; c.drawImage(veilMask, 0, 0);
-  ctx.globalAlpha = 0.9; ctx.drawImage(veilCanvas, t.x, t.y, t.w, t.h); ctx.globalAlpha = 1;
-}
-
+/* Contours come in four classes so the interval can halve with each doubling of zoom without anything popping.
+   With k counting levels of the finer interval:  k≡0 (mod 8) index  ·  k≡4 rising to index  ·  other even k regular
+   ·  odd k emerging (supplementary contours fading in). At the next level every class has become its successor. */
 function march() {
   segN.fill(0);
-  // gradient at every node (central differences, one-sided on the border)
-  for (let j = 0, idx = 0; j < NY; j++) for (let i = 0; i < NX; i++, idx++) {
+  for (let j = 0, idx = 0; j < NY; j++) for (let i = 0; i < NX; i++, idx++) {       // gradient at every node
     Gx[idx] = i === 0 ? Hf[idx + 1] - Hf[idx] : i === NX - 1 ? Hf[idx] - Hf[idx - 1] : (Hf[idx + 1] - Hf[idx - 1]) * 0.5;
     Gy[idx] = j === 0 ? Hf[idx + NX] - Hf[idx] : j === NY - 1 ? Hf[idx] - Hf[idx - NX] : (Hf[idx + NX] - Hf[idx - NX]) * 0.5;
   }
-  const step = CFG.LEVEL_STEP, inv = 1 / step, c = cell, ie = CFG.INDEX_EVERY;
+  const emerging = view.fe > 0.02, step = emerging ? view.fine : view.coarse, kMul = emerging ? 1 : 2, inv = 1 / step, c = cell;
   for (let j = 0; j < rows; j++) {
     let idx = j * NX;
     for (let i = 0; i < cols; i++, idx++) {
@@ -937,7 +1147,8 @@ function march() {
         const lv = L * step;
         const code = (a > lv ? 8 : 0) | (b > lv ? 4 : 0) | (e > lv ? 2 : 0) | (d > lv ? 1 : 0);
         if (code === 0 || code === 15) continue;
-        const bk = (lv < -0.3 ? 0 : lv < 0.5 ? 2 : 4) + (((L % ie) + ie) % ie === 0 ? 1 : 0);
+        const k = L * kMul, cls = (k & 7) === 0 ? 0 : (k & 7) === 4 ? 1 : (k & 1) === 0 ? 2 : 3;
+        const bk = (lv < -0.3 ? 0 : lv < 0.5 ? 4 : 8) + cls;
         MC.lv = lv;
         switch (code) {                               // edges: 0 top, 1 right, 2 bottom, 3 left
           case 1: case 14: emit(bk, 3, 2); break;
@@ -958,81 +1169,108 @@ function march() {
 
 function drawContours() {
   if (fieldDirty) march();
-  const styles = [
-    [col.line, 0.30, 0.6], [col.line, 0.60, 0.95],
-    [col.mid, 0.26, 0.6],  [col.mid, 0.48, 0.95],
-    [col.far, 0.2, 0.6],   [col.far, 0.4, 0.9],
-  ];
+  // [colour, regular alpha, index alpha, index width] per depth group: shoal, mid, deep
+  const groups = [[col.line, 0.30, 0.60, 0.95], [col.mid, 0.26, 0.48, 0.95], [col.far, 0.20, 0.40, 0.9]], fe = view.fe;
   ctx.lineCap = 'butt'; ctx.lineJoin = 'round';      // segments meet tangent-continuously, so butt ends close up
-  for (let bk = 0; bk < 6; bk++) {
+  for (let bk = 0; bk < 12; bk++) {
     const n = segN[bk]; if (!n) continue;
-    const buf = segBuf[bk], s = styles[bk];
+    const buf = segBuf[bk], g = groups[bk >> 2], cls = bk & 3;
+    const alpha = cls === 0 ? g[2] : cls === 1 ? lerp(g[1], g[2], fe) : cls === 2 ? g[1] : g[1] * fe;
+    const width = cls === 0 ? g[3] : cls === 1 ? lerp(0.6, g[3], fe) : 0.6;
     ctx.beginPath();
     for (let i = 0, o = 0; i < n; i++, o += 8) { ctx.moveTo(buf[o], buf[o + 1]); ctx.bezierCurveTo(buf[o + 2], buf[o + 3], buf[o + 4], buf[o + 5], buf[o + 6], buf[o + 7]); }
-    ctx.strokeStyle = rgba(s[0], A(s[1])); ctx.lineWidth = LW(s[2]); ctx.stroke();
+    ctx.strokeStyle = rgba(g[0], A(alpha)); ctx.lineWidth = LW(width); ctx.stroke();
   }
   ctx.lineCap = 'round';
 }
 
-/* graticule: every line is a polyline, so it can bend between projections */
+/* Graticule: every line is a polyline, so it can bend between projections. The interval steps down a ladder as
+   you zoom; lines new to the finer interval fade in while the ones already drawn stay put. */
+const GRAT = [120, 60, 20, 10, 2, 1];               // intervals in half-minutes: 60′ 30′ 10′ 5′ 1′ 0.5′
 const labelQueue = [];
+let gratDecimals = 0;
 function drawGraticule() {
-  const g = CFG.GRATICULE_MINUTES / 60, m = chart.inset, e = proj.e, SEG = 48;
-  const spanLat = Math.max(0.6 * H / chart.k / D2R * 1.4, e > 0 ? 62 / chart.M : 0), spanLon = Math.max(0.6 * W / chart.k / D2R * 1.4, e > 0 ? 86 / chart.M : 0);
-  const latN = Math.min(chart.latC + spanLat, chart.latC + (88 - chart.latC) / chart.M - 0.0001), latS = chart.latC - spanLat * 1.2;
-  const lonW = chart.lonC - spanLon, lonE = chart.lonC + spanLon;
+  const m = chart.inset, e = proj.e, SEG = 48, ppm = chart.scale * view.z, base = 10 * chart.scale;
+  let gi = 0; while (gi < GRAT.length - 1 && GRAT[gi + 1] * 0.5 * ppm >= 0.55 * base) gi++;
+  const n = GRAT[gi], nc = gi > 0 ? GRAT[gi - 1] : n, fade = gi > 0 ? smooth(0.55 * base, 0.95 * base, n * 0.5 * ppm) : 1;
+  gratDecimals = n < 2 ? 1 : 0;
+
+  // lon/lat window on screen, padded
+  let lo0 = 1e9, lo1 = -1e9, la0 = 1e9, la1 = -1e9;
+  for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) {
+    unproject(W * a / 2, H * b / 2, LL);
+    if (LL.lon < lo0) lo0 = LL.lon; if (LL.lon > lo1) lo1 = LL.lon; if (LL.lat < la0) la0 = LL.lat; if (LL.lat > la1) la1 = LL.lat;
+  }
+  const plo = (lo1 - lo0) * 0.25 + 0.01, pla = (la1 - la0) * 0.25 + 0.01; lo0 -= plo; lo1 += plo; la0 -= pla; la1 += pla;
+  if (e > 0) {                                      // stay on the visible face of the globe
+    lo0 = Math.max(lo0, chart.lonC - 86 / chart.M); lo1 = Math.min(lo1, chart.lonC + 86 / chart.M);
+    la0 = Math.max(la0, chart.latC - 74 / chart.M); la1 = Math.min(la1, chart.latC + (88 - chart.latC) / chart.M - 1e-4);
+  }
+
   labelQueue.length = 0;
-  ctx.beginPath();
-  const line = (isLat, v) => {
+  const line = (isLat, v, alpha) => {
     let px_ = 0, py_ = 0, started = false;
     for (let s = 0; s <= SEG; s++) {
       const f = s / SEG;
-      if (isLat) project(lerp(lonW, lonE, f), v, P_); else project(v, lerp(latS, latN, f), P_);
+      if (isLat) project(lerp(lo0, lo1, f), v, P_); else project(v, lerp(la0, la1, f), P_);
       if (e > 0.02 && P_.vis < 0.02) { started = false; continue; }
       const x = P_.x, y = P_.y;
       if (!started) { ctx.moveTo(x, y); started = true; }
       else {
         ctx.lineTo(x, y);
-        // where the line meets the neatline, queue a label
-        if (isLat) {
-          if ((px_ - m) * (x - m) <= 0 && x !== px_) labelQueue.push([m, lerp(py_, y, (m - px_) / (x - px_)), v, 0]);
-          if ((px_ - (W - m)) * (x - (W - m)) <= 0 && x !== px_) labelQueue.push([W - m, lerp(py_, y, (W - m - px_) / (x - px_)), v, 1]);
-        } else {
-          if ((py_ - (H - m)) * (y - (H - m)) <= 0 && y !== py_) labelQueue.push([lerp(px_, x, (H - m - py_) / (y - py_)), H - m, v, 2]);
-          if ((py_ - m) * (y - m) <= 0 && y !== py_) labelQueue.push([lerp(px_, x, (m - py_) / (y - py_)), m, v, 3]);
+        if (alpha > 0.4) {                          // where the line meets the neatline, queue a label
+          if (isLat) {
+            if ((px_ - m) * (x - m) <= 0 && x !== px_) labelQueue.push([m, lerp(py_, y, (m - px_) / (x - px_)), v, 0, alpha]);
+            if ((px_ - (W - m)) * (x - (W - m)) <= 0 && x !== px_) labelQueue.push([W - m, lerp(py_, y, (W - m - px_) / (x - px_)), v, 1, alpha]);
+          } else {
+            if ((py_ - (H - m)) * (y - (H - m)) <= 0 && y !== py_) labelQueue.push([lerp(px_, x, (H - m - py_) / (y - py_)), H - m, v, 2, alpha]);
+            if ((py_ - m) * (y - m) <= 0 && y !== py_) labelQueue.push([lerp(px_, x, (m - py_) / (y - py_)), m, v, 3, alpha]);
+          }
         }
       }
       px_ = x; py_ = y;
     }
   };
-  for (let v = Math.ceil(latS / g - 1e-6) * g; v <= latN; v += g) line(true, v);
-  for (let v = Math.ceil(lonW / g - 1e-6) * g; v <= lonE; v += g) line(false, v);
-  ctx.strokeStyle = rgba(col.line, A(0.17)); ctx.lineWidth = LW(0.5); ctx.stroke();
+  for (let pass = 0; pass < 2; pass++) {            // pass 0: lines of the coarser interval; pass 1: the ones fading in
+    const alpha = pass ? fade : 1; if (alpha < 0.02) continue;
+    ctx.beginPath();
+    for (let k = Math.ceil(la0 * 120 / n); k <= Math.floor(la1 * 120 / n); k++) if (((k * n) % nc === 0) !== (pass === 1)) line(true, k * n / 120, alpha);
+    for (let k = Math.ceil(lo0 * 120 / n); k <= Math.floor(lo1 * 120 / n); k++) if (((k * n) % nc === 0) !== (pass === 1)) line(false, k * n / 120, alpha);
+    ctx.strokeStyle = rgba(col.line, A(0.17) * alpha); ctx.lineWidth = LW(0.5); ctx.stroke();
+  }
+  if (e > 0.01) {                                   // the limb of the globe, if you pull back far enough to see it
+    ctx.beginPath(); ctx.arc(toSX(W / 2), toSY(H / 2), chart.R * view.z, 0, TAU);
+    ctx.strokeStyle = rgba(col.line, A(0.3) * e); ctx.lineWidth = LW(0.6); ctx.stroke();
+  }
 }
-const P_ = { x: 0, y: 0, vis: 1 };
 
 function drawNeatline() {
   const m = chart.inset, e = proj.e;
   ctx.strokeStyle = rgba(col.line, A(0.42)); ctx.lineWidth = LW(0.6);
   ctx.strokeRect(m, m, W - 2 * m, H - 2 * m);
-  if (e < 0.98) {                                   // minute scale along the border (true only on Mercator)
-    const lonLeft = unprojMercLon(m), lonRight = unprojMercLon(W - m), latBot = unprojMercLat(H - m);
-    ctx.beginPath();
-    for (let mm = Math.ceil(latBot * 60); mm <= Math.floor(unprojMercLat(m) * 60); mm++) {
-      projMerc(chart.lonC, mm / 60, P); const y = P.y, l = mm % 10 === 0 ? 9 : mm % 5 === 0 ? 6 : 3;
-      ctx.moveTo(m, y); ctx.lineTo(m + l, y); ctx.moveTo(W - m, y); ctx.lineTo(W - m - l, y);
+  if (e < 0.98) {                                   // minute scale along the border (true only on Mercator); tenths of a minute up close
+    const ppm = chart.scale * view.z, u = 0.1 * ppm >= 5.5 ? 0.1 : ppm >= 5.5 ? 1 : 10, minor = smooth(5.5, 9, u * ppm);
+    const lonL = unprojMercLon(toWX(m)), lonR = unprojMercLon(toWX(W - m)), latB = unprojMercLat(toWY(H - m)), latT = unprojMercLat(toWY(m));
+    for (let pass = 0; pass < 2; pass++) {          // pass 0: every tenth tick; pass 1: the ones between
+      const alpha = pass ? minor : 1; if (alpha < 0.02) continue;
+      ctx.beginPath();
+      for (let n = Math.ceil(latB * 60 / u); n <= Math.floor(latT * 60 / u); n++) {
+        if ((n % 10 === 0) !== (pass === 0)) continue;
+        projMerc(chart.lonC, n * u / 60, P); const y = toSY(P.y), l = n % 10 === 0 ? 9 : n % 5 === 0 ? 6 : 3;
+        ctx.moveTo(m, y); ctx.lineTo(m + l, y); ctx.moveTo(W - m, y); ctx.lineTo(W - m - l, y);
+      }
+      for (let n = Math.ceil(lonL * 60 / u); n <= Math.floor(lonR * 60 / u); n++) {
+        if ((n % 10 === 0) !== (pass === 0)) continue;
+        projMerc(n * u / 60, chart.latC, P); const x = toSX(P.x), l = n % 10 === 0 ? 9 : n % 5 === 0 ? 6 : 3;
+        ctx.moveTo(x, m); ctx.lineTo(x, m + l); ctx.moveTo(x, H - m); ctx.lineTo(x, H - m - l);
+      }
+      ctx.strokeStyle = rgba(col.line, A(0.4 * (1 - e)) * alpha); ctx.stroke();
     }
-    for (let mm = Math.ceil(lonLeft * 60); mm <= Math.floor(lonRight * 60); mm++) {
-      projMerc(mm / 60, chart.latC, P); const x = P.x, l = mm % 10 === 0 ? 9 : mm % 5 === 0 ? 6 : 3;
-      ctx.moveTo(x, m); ctx.lineTo(x, m + l); ctx.moveTo(x, H - m); ctx.lineTo(x, H - m - l);
-    }
-    ctx.strokeStyle = rgba(col.line, A(0.4 * (1 - e))); ctx.stroke();
   }
   // tick labels where graticule lines meet the border
-  ctx.font = `9.5px ${FONT_MONO}`; ctx.fillStyle = rgba(col.line, A(0.62)); ctx.textBaseline = 'alphabetic';
-  if ('letterSpacing' in ctx) ctx.letterSpacing = '0.4px';
+  ctx.font = `9.5px ${FONT_MONO}`; ctx.textBaseline = 'alphabetic'; spacing(0.4);
   for (const q of labelQueue) {
-    const txt = q[3] < 2 ? fmtDM(q[2], true, 0) : fmtDM(q[2], false, 0);
+    const txt = fmtDM(q[2], q[3] < 2, gratDecimals);
     let x = q[0], y = q[1];
     if (q[3] === 0) { ctx.textAlign = 'left'; x += 13; y -= 5; }
     else if (q[3] === 1) { ctx.textAlign = 'right'; x -= 13; y -= 5; }
@@ -1040,14 +1278,12 @@ function drawNeatline() {
     else { ctx.textAlign = 'left'; x += 5; y += 21; }
     if (x < m + 4 || x > W - m - 4 || y < m + 10 || y > H - m - 4) continue;
     if (q[3] < 2 && (y < m + 34 || y > H - m - 30)) continue;
-    if (q[3] >= 2 && x > W - m - 62) continue;
+    if (q[3] >= 2 && x > W - m - 70) continue;
     if (blocked(q[3] === 1 ? x - 30 : x + 30, y - 4, 2)) continue;
-    ctx.fillText(txt, x, y);
+    ctx.fillStyle = rgba(col.line, A(0.62) * smooth(0.4, 0.9, q[4])); ctx.fillText(txt, x, y);
   }
-  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  spacing(0);
 }
-const unprojMercLon = x => chart.lonC + (x - W / 2) / chart.k / D2R;
-const unprojMercLat = y => (2 * Math.atan(Math.exp(chart.mercC - (y - H / 2) / chart.k)) - Math.PI / 2) / D2R;
 
 function drawParticles() {
   if (!PN) return;
@@ -1055,8 +1291,8 @@ function drawParticles() {
   for (let pass = 0; pass < 2; pass++) {
     const depth = pass === 0 ? K : 3;
     ctx.beginPath();
-    for (let p = 0; p < PN; p++) {
-      const n = Math.min(phl[p], depth); if (!n) continue;
+    for (let p = 0; p < pAct; p++) {
+      const n = Math.min(phl[p], depth); if (!n || px[p] < -900) continue;
       ctx.moveTo(px[p], py[p]);
       for (let m = 0; m < n; m++) { const o = (p * K + ((histHead - m + K) % K)) * 2; ctx.lineTo(phist[o], phist[o + 1]); }
     }
@@ -1065,13 +1301,51 @@ function drawParticles() {
   }
 }
 
-function drawStreamLabel() {
-  const txt = 'Gulf Stream', gap = clamp(H * 0.03, 15, 24), off = chart.sigma * 2.05;
-  ctx.font = `italic 400 ${W < 560 ? 12 : 14}px ${FONT_SERIF}`; ctx.fillStyle = rgba(col.chalk, A(0.5));
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+/* place names come and go with scale, as they do from one chart of a series to the next */
+function label(text, x, y, size, italic, track, alpha, c) {
+  ctx.font = `${italic ? 'italic ' : ''}${italic ? 400 : 500} ${size}px ${FONT_SERIF}`; ctx.fillStyle = rgba(c || col.chalk, alpha);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; spacing(track); ctx.fillText(text, x + track / 2, y); spacing(0);
+}
+function drawNames() {
+  // the Stream's name follows its axis
+  const txt = 'Gulf Stream', gap = clamp(H * 0.03, 15, 24), off = chart.sigma * 2.05 * Math.min(view.z, 1.5);
+  ctx.font = `italic 400 ${W < 560 ? 12 : 14}px ${FONT_SERIF}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   for (let i = 0; i < txt.length; i++) {
-    const y = H * 0.52 + (txt.length / 2 - i) * gap, x = axisX(y, simT) + off;
-    ctx.save(); ctx.translate(x, y); ctx.rotate(-Math.PI / 2 + Math.atan(axisDX(y, simT)) * -1); ctx.fillText(txt[i], 0, 0); ctx.restore();
+    const y = H * 0.52 + (txt.length / 2 - i) * gap, yw = toWY(y), x = toSX(axisX(yw, simT)) + off;
+    const a = smooth(24, 70, Math.min(x, W - x)); if (a <= 0.01) continue;
+    ctx.fillStyle = rgba(col.chalk, A(0.5) * a);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(-Math.PI / 2 - Math.atan(axisDX(yw, simT))); ctx.fillText(txt[i], 0, 0); ctx.restore();
+  }
+  // wide view: the waters the chart belongs to
+  let a = band(0, 0.82);
+  if (a > 0.01) {
+    const big = W < 560 ? 11 : 13, tr = W < 560 ? 4 : 7;
+    project(-79.80, 26.29, P_); label('STRAITS OF FLORIDA', P_.x, P_.y, big, true, tr, A(0.42) * a);
+    project(-78.93, 25.47, P_); label('GREAT BAHAMA BANK', P_.x, P_.y, big, true, tr, A(0.42) * a);
+  }
+  // closer: a bathymetric feature, then a light with its characteristic, as larger-scale charts add them
+  a = band(1.3, 5);
+  if (a > 0.01) { project(-79.93, 25.895, P_); label('Miami Terrace', P_.x, P_.y, 14, true, 2.5, A(0.44) * a * zoneAlpha(P_.x, P_.y)); }
+  a = band(1.5, 0);
+  if (a > 0.01) {
+    project(-80.097, 25.590, P_); const x = P_.x, y = P_.y, za = a * zoneAlpha(x, y);
+    if (za > 0.01 && x > -80 && x < W + 80 && y > -40 && y < H + 40) {
+      ctx.beginPath(); ctx.arc(x, y, 1.6, 0, TAU); ctx.fillStyle = rgba(col.chalk, A(0.7) * za); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x + 3, y - 3); ctx.quadraticCurveTo(x + 11, y - 13, x + 7, y - 15); ctx.quadraticCurveTo(x + 5, y - 9, x + 3, y - 3);
+      ctx.fillStyle = rgba(col.accent, 0.8 * za); ctx.fill();                       // the flare a chart gives a light
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.font = `italic 400 12px ${FONT_SERIF}`; ctx.fillStyle = rgba(col.chalk, A(0.6) * za); ctx.fillText('Fowey Rocks', x + 15, y + 1);
+      ctx.font = `8px ${FONT_MONO}`; ctx.fillStyle = rgba(col.chalk, A(0.45) * za * band(2.4, 0)); spacing(0.6); ctx.fillText('Fl 10s 110ft 15M', x + 15, y + 13); spacing(0);
+    }
+  }
+  // far out: the ghost's whole course, a Lissajous figure in the golden ratio
+  a = 1 - smooth(0.52, 0.86, view.z);
+  if (a > 0.01) {
+    ctx.beginPath();
+    for (let i = 0; i < lissPts.length; i += 2) { const x = toSX(lissPts[i]), y = toSY(lissPts[i + 1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.strokeStyle = rgba(col.line, A(0.2) * a); ctx.lineWidth = LW(0.5); ctx.stroke();
+    ctx.font = `italic 400 11px ${FONT_SERIF}`; ctx.fillStyle = rgba(col.chalk, A(0.42) * a); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText('x = sin t,  y = sin φt', toSX(W * 0.16), toSY(H * 0.83) + 16);
   }
 }
 
@@ -1084,20 +1358,43 @@ function drawSounding(x, y, fm, alpha, c) {
     if (ft) { ctx.font = `italic 500 8px ${FONT_SERIF}`; ctx.fillText(String(ft), x + 5.5, y + 7); }
   } else { ctx.font = `italic 500 11.5px ${FONT_SERIF}`; ctx.fillText(String(Math.round(fm)), x, y + 4); }
 }
+const SEABED = [['Co', 'S', 'Sh Co', 'S Sh'], ['S', 'fS', 'S Sh', 'M S'], ['M', 'Oz', 'gy M', 'M']];     // coral, sand, shells, mud, ooze
 
 function drawSoundings() {
-  for (const s of soundings) {
-    s.fm = fathoms(sampleH(s.x, s.y));
-    if (s.shown < 0 || ((stepCount + ((s.phase * 90) | 0)) % 90 === 0)) s.shown = s.fm;      // re-read about every 1.5 s
-    drawSounding(s.x, s.y, s.shown, A(0.5), col.chalk);
+  visSound.length = 0;
+  const z = view.z, x0 = toWX(0), x1 = toWX(W), y0 = toWY(0), y1 = toWY(H), notes = smooth(3, 4.4, z);
+  for (let l = -2; l <= 3; l++) {
+    const zl = soundingZoom(l), a0 = zl < CFG.ZOOM[0] * 1.2 ? 1 : smooth(zl * 0.85, zl * 1.2, z);
+    if (a0 <= 0.01) continue;
+    const c = CFG.SOUNDING_CELL / Math.pow(2, l);
+    for (let j = Math.floor(y0 / c); j <= Math.floor(y1 / c); j++) for (let i = Math.floor(x0 / c); i <= Math.floor(x1 / c); i++) {
+      if (!soundingAt(l, i, j, SP)) continue;
+      const sx = toSX(SP.x), sy = toSY(SP.y), a = a0 * zoneAlpha(sx, sy);
+      if (a < 0.02) continue;
+      const key = (l + 2) + 8 * ((i + 4096) + 8192 * (j + 4096)), now = fathoms(sampleH(sx, sy));
+      let rec = soundCache.get(key);
+      if (!rec) { rec = { fm: now, t: simT - SP.h * 1.5 }; soundCache.set(key, rec); }
+      else if (simT - rec.t > 1.5 || view.moved) { rec.fm = now; rec.t = simT; }       // re-read about every 1.5 s
+      drawSounding(sx, sy, rec.fm, A(0.5) * a, col.chalk);
+      if (notes > 0.02 && SP.h < 0.55) {            // up close, the nature of the bottom
+        ctx.font = `italic 400 9px ${FONT_SERIF}`; ctx.fillStyle = rgba(col.chalk, A(0.4) * a * notes);
+        ctx.fillText(SEABED[rec.fm < 15 ? 0 : rec.fm < 140 ? 1 : 2][(SP.h * 7.27 * 4) & 3], sx + 2, sy + 16);
+      }
+      if (a > 0.5) visSound.push(sx, sy);
+    }
   }
+  if (soundCache.size > 1200) soundCache.clear();
+  const da = band(2, 0);
   for (const m of marks) {
+    const x = toSX(m.x), y = toSY(m.y);
+    if (x < -60 || x > W + 60 || y < -30 || y > H + 30) continue;
     if (m.kind === 'datum') {
-      ctx.beginPath(); ctx.moveTo(m.x - 5, m.y); ctx.lineTo(m.x + 5, m.y); ctx.moveTo(m.x, m.y - 5); ctx.lineTo(m.x, m.y + 5);
+      ctx.beginPath(); ctx.moveTo(x - 5, y); ctx.lineTo(x + 5, y); ctx.moveTo(x, y - 5); ctx.lineTo(x, y + 5);
       ctx.strokeStyle = rgba(col.accent, 0.85); ctx.lineWidth = LW(0.8); ctx.stroke();
+      if (da > 0.01) { ctx.font = `8px ${FONT_MONO}`; ctx.fillStyle = rgba(col.chalk, A(0.45) * da); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; spacing(1.2); ctx.fillText('DATUM', x + 10, y + 3); spacing(0); }
     } else {
       ctx.font = `italic 500 11.5px ${FONT_SERIF}`; ctx.fillStyle = rgba(col.chalk, A(0.5)); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-      ctx.fillText(m.text, m.x, m.y + 4);
+      ctx.fillText(m.text, x, y + 4);
     }
   }
 }
@@ -1105,8 +1402,8 @@ function drawSoundings() {
 function drawEggs() {
   for (const e of eggs) {
     if (e.w < 0.01) continue;
-    const a = e.w * e.w;
-    ctx.save(); ctx.translate(e.x, e.y); ctx.lineWidth = LW(0.8); ctx.lineJoin = 'round';
+    const a = e.w * e.w, z = view.z;
+    ctx.save(); ctx.translate(toSX(e.x), toSY(e.y)); ctx.scale(z, z); ctx.lineWidth = LW(0.8) / z; ctx.lineJoin = 'round';
     if (e.poly) {
       ctx.beginPath(); e.poly.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
       e.keys.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
@@ -1114,11 +1411,11 @@ function drawEggs() {
       ctx.strokeStyle = rgba(col.accent, 0.62 * a); ctx.stroke();
     } else if (e.sq) {
       ctx.beginPath(); for (const q of e.sq) ctx.rect(q.x, q.y, q.s, q.s);
-      ctx.strokeStyle = rgba(col.chalk, A(0.16) * a); ctx.lineWidth = LW(0.5); ctx.stroke();
+      ctx.strokeStyle = rgba(col.chalk, A(0.16) * a); ctx.lineWidth = LW(0.5) / z; ctx.stroke();
       ctx.beginPath(); for (const q of e.sq) ctx.arc(q.cx, q.cy, q.s, q.a0, q.a0 + Math.PI / 2);
-      ctx.strokeStyle = rgba(col.accent, 0.7 * a); ctx.lineWidth = LW(0.9); ctx.stroke();
+      ctx.strokeStyle = rgba(col.accent, 0.7 * a); ctx.lineWidth = LW(0.9) / z; ctx.stroke();
     } else {
-      ctx.beginPath(); e.seeds.forEach((p, n) => { const r = 0.7 + 1.1 * Math.sqrt(n / 55); ctx.moveTo(p[0] + r, p[1]); ctx.arc(p[0], p[1], r, 0, TAU); });
+      ctx.beginPath(); e.seeds.forEach((p, n) => { const r = (0.7 + 1.1 * Math.sqrt(n / 55)) / Math.sqrt(z); ctx.moveTo(p[0] + r, p[1]); ctx.arc(p[0], p[1], r, 0, TAU); });
       ctx.fillStyle = rgba(col.accent, 0.75 * a); ctx.fill();
     }
     ctx.restore();
@@ -1127,7 +1424,7 @@ function drawEggs() {
 
 function drawTrack() {
   // the course made good: five strokes of decreasing opacity, oldest first
-  const life = CFG.TRAIL_LIFE * 1.25, n = track.n;
+  const life = CFG.TRAIL_LIFE * 1.25, n = track.n, z = view.z;
   ctx.setLineDash([1.5, 4.5]); ctx.lineWidth = LW(0.8); ctx.lineCap = 'butt';
   for (let b = 0; b < 5; b++) {
     ctx.beginPath(); let any = false;
@@ -1135,8 +1432,8 @@ function drawTrack() {
       const i0 = (track.head + i - 1) % n, i1 = (track.head + i) % n, age = simT - track.t[i1];
       if (age > life || track.t[i0] < -1e8 || track.t[i1] - track.t[i0] > 2.5) continue;
       if (Math.min(4, (age / life * 5) | 0) !== b) continue;
-      if (Math.hypot(track.x[i1] - track.x[i0], track.y[i1] - track.y[i0]) > 160) continue;
-      ctx.moveTo(track.x[i0], track.y[i0]); ctx.lineTo(track.x[i1], track.y[i1]); any = true;
+      if (Math.hypot(track.x[i1] - track.x[i0], track.y[i1] - track.y[i0]) * z > 160) continue;
+      ctx.moveTo(toSX(track.x[i0]), toSY(track.y[i0])); ctx.lineTo(toSX(track.x[i1]), toSY(track.y[i1])); any = true;
     }
     if (any) { ctx.strokeStyle = rgba(col.chalk, A(0.36 * (1 - b / 5))); ctx.stroke(); }
   }
@@ -1144,19 +1441,19 @@ function drawTrack() {
 }
 
 function drawBuoys() {
-  const ws = CFG.WAVE_SPEED * (REDUCED ? 0.55 : 1);
   ctx.lineWidth = LW(0.7);
   for (const r of rings) {
-    const age = simT - r.t0, rad = age * ws, a = r.a * Math.exp(-age / 2.3) * smooth(0, 0.25, age) * 0.6;
+    const a = r.a * Math.exp(-r.age / 5.5) * smooth(0, 0.8, r.age) * 0.6;
     if (a < 0.012) continue;
-    ctx.beginPath(); ctx.arc(r.x, r.y, rad, 0, TAU); ctx.strokeStyle = rgba(col.accent, a); ctx.stroke();
+    ctx.beginPath(); ctx.arc(toSX(r.x), toSY(r.y), r.r * view.z, 0, TAU); ctx.strokeStyle = rgba(col.accent, a); ctx.stroke();
   }
   for (const b of buoys) {
-    const a = b.alpha;
-    ctx.beginPath(); ctx.arc(b.x, b.y, 3.4, 0, TAU); ctx.strokeStyle = rgba(col.accent, 0.95 * a); ctx.lineWidth = LW(1); ctx.stroke();
-    ctx.beginPath(); ctx.arc(b.x, b.y, 0.9, 0, TAU); ctx.fillStyle = rgba(col.accent, a); ctx.fill();
-    if (b.fm < 0 || stepCount % 45 === 0) b.fm = fathoms(sampleH(b.x, b.y));
-    drawSounding(b.x + 15, b.y - 8, b.fm, A(0.7) * a, col.chalk);
+    const a = b.alpha, x = toSX(b.x), y = toSY(b.y);
+    if (x < -40 || x > W + 40 || y < -40 || y > H + 40) continue;
+    ctx.beginPath(); ctx.arc(x, y, 3.4, 0, TAU); ctx.strokeStyle = rgba(col.accent, 0.95 * a); ctx.lineWidth = LW(1); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 0.9, 0, TAU); ctx.fillStyle = rgba(col.accent, a); ctx.fill();
+    if (b.fm < 0 || stepCount % 45 === 0) b.fm = fathoms(sampleH(clamp(x, 0, W), clamp(y, 0, H)));
+    drawSounding(x + 15, y - 8, b.fm, A(0.7) * a, col.chalk);
   }
 }
 
@@ -1183,55 +1480,82 @@ function drawCompass() {
   ctx.beginPath(); ctx.moveTo(x, y - r - 9); ctx.lineTo(x - 3.2, y - r - 2.2); ctx.lineTo(x + 3.2, y - r - 2.2); ctx.closePath();
   ctx.fillStyle = rgba(col.accent, 0.9); ctx.fill();
   ctx.font = `8px ${FONT_MONO}`; ctx.fillStyle = rgba(col.line, A(0.5)); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-  if ('letterSpacing' in ctx) ctx.letterSpacing = '1.2px';
-  ctx.fillText('VAR 7½°W', x + 0.6, y + r + 15);
-  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  spacing(1.2); ctx.fillText('VAR 7½°W', x + 0.6, y + r + 15); spacing(0);
 }
 
+const SCALE_LADDER = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50];
+const pxPerNm = () => chart.scale / Math.cos(chart.latC * D2R) * view.z;
 function drawScaleBar() {
-  const { x, y, nm, px: len } = scaleBar, u = len / nm, hgt = 3;
-  ctx.strokeStyle = rgba(col.line, A(0.55)); ctx.fillStyle = rgba(col.line, A(0.55)); ctx.lineWidth = LW(0.6);
+  const ppn = pxPerNm(); let nm = SCALE_LADDER[0];
+  for (const v of SCALE_LADDER) if (v * ppn <= scaleBar.max) nm = v;
+  if (nm !== scaleBar.nm) { scaleBar.nm = nm; scaleBar.alpha = 0; }             // a new unit fades in rather than swapping
+  const { x, y } = scaleBar, len = nm * ppn, blk = len / 10, hgt = 3, a = scaleBar.alpha;
+  ctx.strokeStyle = rgba(col.line, A(0.55) * a); ctx.fillStyle = rgba(col.line, A(0.55) * a); ctx.lineWidth = LW(0.6);
   ctx.strokeRect(x, y, len, hgt);
-  const half = nm / 2;
-  for (let i = 0; i < half; i += 2) ctx.fillRect(x + i * u, y, u, hgt);         // alternating miles, then one long division
-  ctx.beginPath(); ctx.moveTo(x + half * u, y); ctx.lineTo(x + half * u, y + hgt); ctx.stroke();
-  ctx.font = `8px ${FONT_MONO}`; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = rgba(col.line, A(0.6));
-  ctx.textAlign = 'center'; ctx.fillText('0', x, y - 6); ctx.fillText(String(half), x + half * u, y - 6); ctx.fillText(String(nm), x + len, y - 6);
-  ctx.textAlign = 'left'; if ('letterSpacing' in ctx) ctx.letterSpacing = '1.2px';
-  ctx.fillText('NAUTICAL MILES', x, y + hgt + 13);
-  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  for (let i = 0; i < 5; i += 2) ctx.fillRect(x + i * blk, y, blk, hgt);        // alternating tenths, then one long division
+  ctx.beginPath(); ctx.moveTo(x + len / 2, y); ctx.lineTo(x + len / 2, y + hgt); ctx.stroke();
+  ctx.font = `8px ${FONT_MONO}`; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = rgba(col.line, A(0.6) * a);
+  ctx.textAlign = 'center'; ctx.fillText('0', x, y - 6); ctx.fillText(String(+(nm / 2).toFixed(2)), x + len / 2, y - 6); ctx.fillText(String(nm), x + len, y - 6);
+  ctx.textAlign = 'left'; spacing(1.2); ctx.fillStyle = rgba(col.line, A(0.6));
+  ctx.fillText('NAUTICAL MILES', x, y + hgt + 13); spacing(0);
 }
 
 /* the lens: a hidden mathematical layer, drawn off-screen and feathered at the rim */
 const LENS_NAMES = ['i · flow field', 'ii · voronoi of soundings', 'iii · raw field h(x, y, t)'];
-function lensLayer(c, which, x, y, R) {
-  if (which === 0) {                                 // the vector field, as tiny arrows
-    const g = 21, i0 = Math.floor((x - R) / g), i1 = Math.ceil((x + R) / g), j0 = Math.floor((y - R) / g), j1 = Math.ceil((y + R) / g);
-    c.beginPath();
-    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-      const ax = i * g, ay = j * g; flow(ax, ay, simT, FV);
-      const sp = Math.hypot(FV.x, FV.y), l = 2.5 + 10 * Math.min(1, sp / CFG.STREAM_SPEED), ux = FV.x / (sp || 1), uy = FV.y / (sp || 1);
-      const hx = ax + ux * l * 0.5, hy = ay + uy * l * 0.5;
-      c.moveTo(ax - ux * l * 0.5, ay - uy * l * 0.5); c.lineTo(hx, hy);
-      const hd = Math.min(3, l * 0.36);
-      c.moveTo(hx - ux * hd - uy * hd * 0.58, hy - uy * hd + ux * hd * 0.58); c.lineTo(hx, hy); c.lineTo(hx - ux * hd + uy * hd * 0.58, hy - uy * hd - ux * hd * 0.58);
+function voronoiCells(x, y, R) {            // Voronoi cells of the soundings (and buoys) in view, clipped to a box around the lens
+  const sites = [];
+  for (let i = 0; i < visSound.length; i += 2) sites.push(visSound[i], visSound[i + 1]);
+  for (const b of buoys) if (!b.dead) sites.push(toSX(b.x), toSY(b.y));
+  const out = [], bx0 = x - R - 8, bx1 = x + R + 8, by0 = y - R - 8, by1 = y + R + 8, n = sites.length / 2;
+  for (let i = 0; i < n; i++) {
+    const ax = sites[i * 2], ay = sites[i * 2 + 1]; let poly = [[bx0, by0], [bx1, by0], [bx1, by1], [bx0, by1]];
+    for (let j = 0; j < n && poly.length > 2; j++) {
+      if (j === i) continue;
+      const nx = sites[j * 2] - ax, ny = sites[j * 2 + 1] - ay, mx = ax + nx / 2, my = ay + ny / 2, nxt = [];
+      for (let k = 0; k < poly.length; k++) {
+        const Aq = poly[k], B = poly[(k + 1) % poly.length];
+        const da = (Aq[0] - mx) * nx + (Aq[1] - my) * ny, db = (B[0] - mx) * nx + (B[1] - my) * ny;
+        if (da <= 0) nxt.push(Aq);
+        if ((da < 0 && db > 0) || (da > 0 && db < 0)) { const t = da / (da - db); nxt.push([Aq[0] + t * (B[0] - Aq[0]), Aq[1] + t * (B[1] - Aq[1])]); }
+      }
+      poly = nxt;
     }
-    c.strokeStyle = rgba(col.chalk, A(0.72)); c.lineWidth = LW(0.7); c.lineCap = 'round'; c.lineJoin = 'round'; c.stroke();
+    if (poly.length > 2) out.push(poly);
+  }
+  return out;
+}
+function lensLayer(c, which, x, y, R) {
+  if (which === 0) {                                 // the vector field, as tiny arrows on a world lattice that subdivides with zoom
+    const s = Math.log2(view.z), L = Math.floor(s + 1e-9), f = smooth(0.1, 0.9, s - L), g = 21 / Math.pow(2, L + 1), gs = g * view.z;
+    const i0 = Math.floor(toWX(x - R) / g), i1 = Math.ceil(toWX(x + R) / g), j0 = Math.floor(toWY(y - R) / g), j1 = Math.ceil(toWY(y + R) / g);
+    c.lineWidth = LW(0.7); c.lineCap = 'round'; c.lineJoin = 'round';
+    for (let pass = 0; pass < 2; pass++) {           // pass 0: lattice points already there; pass 1: the ones arriving
+      if (pass && f < 0.03) break;
+      c.beginPath();
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        if ((((i | j) & 1) === 0) !== (pass === 0)) continue;
+        flow(i * g, j * g, simT, FV);
+        const ax = toSX(i * g), ay = toSY(j * g), sp = Math.hypot(FV.x, FV.y), ux = FV.x / (sp || 1), uy = FV.y / (sp || 1);
+        const l = (2.5 + 10 * Math.min(1, sp / CFG.STREAM_SPEED)) * (pass ? 0.5 + 0.5 * f : 1), hx = ax + ux * l * 0.5, hy = ay + uy * l * 0.5, hd = Math.min(3, l * 0.36);
+        c.moveTo(ax - ux * l * 0.5, ay - uy * l * 0.5); c.lineTo(hx, hy);
+        c.moveTo(hx - ux * hd - uy * hd * 0.58, hy - uy * hd + ux * hd * 0.58); c.lineTo(hx, hy); c.lineTo(hx - ux * hd + uy * hd * 0.58, hy - uy * hd - ux * hd * 0.58);
+      }
+      c.strokeStyle = rgba(col.chalk, A(0.72) * (pass ? f : 1) * (gs < 12 && pass ? 0.8 : 1)); c.stroke();
+    }
   } else if (which === 1) {                          // Voronoi cells of the soundings (and of any buoys dropped)
-    if (voronoiDirty) buildVoronoi();
     c.beginPath();
-    for (const poly of voronoi) { c.moveTo(poly[0][0], poly[0][1]); for (let k = 1; k < poly.length; k++) c.lineTo(poly[k][0], poly[k][1]); c.closePath(); }
+    for (const poly of voronoiCells(x, y, R)) { c.moveTo(poly[0][0], poly[0][1]); for (let k = 1; k < poly.length; k++) c.lineTo(poly[k][0], poly[k][1]); c.closePath(); }
     c.strokeStyle = rgba(col.chalk, A(0.7)); c.lineWidth = LW(0.7); c.lineJoin = 'round'; c.stroke();
     c.beginPath();
-    for (const s of soundings) { c.moveTo(s.x + 1.6, s.y); c.arc(s.x, s.y, 1.6, 0, TAU); }
+    for (let i = 0; i < visSound.length; i += 2) { c.moveTo(visSound[i] + 1.6, visSound[i + 1]); c.arc(visSound[i], visSound[i + 1], 1.6, 0, TAU); }
     c.fillStyle = rgba(col.line, A(0.9)); c.fill();
     c.beginPath();
-    for (const b of buoys) { c.moveTo(b.x + 2, b.y); c.arc(b.x, b.y, 2, 0, TAU); }
+    for (const b of buoys) { const bx = toSX(b.x), by = toSY(b.y); c.moveTo(bx + 2, by); c.arc(bx, by, 2, 0, TAU); }
     c.fillStyle = rgba(col.accent, 0.95); c.fill();
   } else {                                           // the raw scalar field, one sample per grid node, as a halftone:
     const i0 = Math.max(0, Math.floor((x - R) / cell)), i1 = Math.min(NX - 1, Math.ceil((x + R) / cell));   // size = how far the sample
     const j0 = Math.max(0, Math.floor((y - R) / cell)), j1 = Math.min(NY - 1, Math.ceil((y + R) / cell));   // sits from the value under
-    const h0 = sampleH(x, y), gainH = 1 / 0.45;                                                              // the cursor, tone = its sign
+    const h0 = sampleH(x, y), gainH = view.z / 0.45;                                                        // the cursor, tone = its sign
     for (let pass = 0; pass < 2; pass++) {
       c.beginPath();
       for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
@@ -1258,7 +1582,7 @@ function drawLens() {
     c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
     c.clearRect(0, 0, lensCanvas.width, lensCanvas.height);
     c.fillStyle = rgba(col.bg, 0.8); c.fillRect(0, 0, lensCanvas.width, lensCanvas.height);       // push the chart back
-    c.setTransform(dpr, 0, 0, dpr, (half - x) * dpr, (half - y) * dpr);                           // world coordinates
+    c.setTransform(dpr, 0, 0, dpr, (half - x) * dpr, (half - y) * dpr);                           // screen coordinates
     if (m < 0.999) { c.globalAlpha = 1 - m; lensLayer(c, lens.prev, x, y, R); }
     c.globalAlpha = m; lensLayer(c, lens.cur, x, y, R);
     c.globalAlpha = 1; c.setTransform(dpr, 0, 0, dpr, 0, 0); c.globalCompositeOperation = 'destination-in';
@@ -1272,14 +1596,13 @@ function drawLens() {
   ctx.beginPath(); ctx.arc(x, y, R, 0, TAU);
   for (let k = 0; k < 4; k++) { const t = k * Math.PI / 2; ctx.moveTo(x + Math.cos(t) * (R + 2), y + Math.sin(t) * (R + 2)); ctx.lineTo(x + Math.cos(t) * (R + 6), y + Math.sin(t) * (R + 6)); }
   ctx.strokeStyle = rgba(col.chalk, A(0.34) * ar); ctx.lineWidth = LW(0.6); ctx.stroke();
-  ctx.font = `8.5px ${FONT_MONO}`; ctx.textBaseline = 'alphabetic';
-  if ('letterSpacing' in ctx) ctx.letterSpacing = '1px';
+  ctx.font = `8.5px ${FONT_MONO}`; ctx.textBaseline = 'alphabetic'; spacing(1);
   const side = x + R + 170 < W ? 1 : x - R - 170 > 0 ? -1 : 0;
   const cx = side ? x + side * R * 0.74 : clamp(x, 110, W - 110), cy = side ? y + R * 0.74 + 12 : (y + R + 40 < H ? y + R + 20 : y - R - 14);
   ctx.textAlign = side > 0 ? 'left' : side < 0 ? 'right' : 'center';
   if (m < 0.999) { ctx.fillStyle = rgba(col.chalk, A(0.55) * a * (1 - m)); ctx.fillText(LENS_NAMES[lens.prev], cx, cy); }
   ctx.fillStyle = rgba(col.chalk, A(0.55) * a * m); ctx.fillText(LENS_NAMES[lens.cur], cx, cy);
-  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  spacing(0);
 
   // the vessel
   if (!ghost.on) {
@@ -1291,9 +1614,9 @@ function drawLens() {
 }
 
 /* title-block readout, eased and refreshed about 12 times a second */
-const hud = { lat: CFG.MIAMI.lat, lon: CFG.MIAMI.lon, fm: 100, kn: 0, set: 0, acc: 1, first: true };
+const hud = { lat: CFG.MIAMI.lat, lon: CFG.MIAMI.lon, fm: 100, kn: 0, set: 0, acc: 1, first: true, scale: '' };
 function updateHUD(dt) {
-  unproject(ptr.sx, ptr.sy, LL); flow(ptr.sx, ptr.sy, simT, FV);
+  unproject(ptr.sx, ptr.sy, LL); flow(toWX(ptr.sx), toWY(ptr.sy), simT, FV);
   const k = hud.first ? 1 : 1 - Math.exp(-dt / 0.22);
   hud.lat += (LL.lat - hud.lat) * k; hud.lon += (LL.lon - hud.lon) * k;
   hud.fm += (fathoms(sampleH(ptr.sx, ptr.sy)) - hud.fm) * k;
@@ -1301,9 +1624,14 @@ function updateHUD(dt) {
   hud.kn += (kn - hud.kn) * k;
   let d = Math.atan2(FV.x, -FV.y) / D2R - hud.set; d = ((d + 540) % 360) - 180; hud.set = (hud.set + d * k + 360) % 360;
   hud.first = false; hud.acc += dt; if (hud.acc < 0.08) return; hud.acc = 0;
-  el.pos.textContent = `${fmtDM(hud.lat, true, 1)} ${fmtDM(hud.lon, false, 1)}`;
+  const dec = view.z >= 3 ? 2 : 1;
+  el.pos.textContent = `${fmtDM(hud.lat, true, dec)} ${fmtDM(hud.lon, false, dec)}`;
   el.depth.textContent = `${Math.round(hud.fm)} fm · ${Math.round(hud.fm * 1.8288)} m`;
   el.set.textContent = hud.kn < 0.15 ? 'slack' : `${pad(Math.round(hud.set) % 360, 3)}° · ${hud.kn.toFixed(1)} kn`;
+  // the natural scale, taking a CSS inch as an inch
+  const ratio = 1852 / (pxPerNm() * 0.0254 / 96), mag = Math.pow(10, Math.floor(Math.log10(ratio)) - 1);
+  const s = 'Scale 1:' + (Math.round(ratio / mag) * mag).toLocaleString('en-US');
+  if (s !== hud.scale) el.scale.textContent = hud.scale = s;
 }
 
 function render(dt) {
@@ -1313,7 +1641,7 @@ function render(dt) {
   drawContours();
   drawEggs();
   drawParticles();
-  drawStreamLabel();
+  drawNames();
   drawTrack();
   drawSoundings();
   drawBuoys();
@@ -1326,15 +1654,18 @@ function render(dt) {
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   13 · LOOP
+   15 · LOOP
    ════════════════════════════════════════════════════════════════════ */
 function step() {
-  simT += STEP; fieldT += STEP * (REDUCED ? 0.3 : 1); stepCount++;
+  simT += STEP; stepCount++;
+  // closing in magnifies every drift of the field, so its clock slows to keep the tempo tidal
+  fieldT += STEP * (REDUCED ? 0.3 : 1) * Math.pow(Math.max(1, view.z), -0.8);
+  updateView(STEP);
   injectWake();
   stepBuoys();
   stepWaves();
   stepEggs();
-  computeNoise(stepCount & 1);
+  computeNoise();
   combineField();
   stepParticles();
 }
@@ -1350,7 +1681,7 @@ function frame(now) {
   if (stats.on) {
     stats.t += dt; stats.n++; if (dt > stats.worst) stats.worst = dt;
     if (stats.t >= 1) {
-      el.stats.textContent = `${(stats.t / stats.n * 1000).toFixed(1)} ms/frame · worst ${(stats.worst * 1000).toFixed(0)} · script ${(stats.cpu / stats.n).toFixed(1)} ms · ${W}×${H} @${dpr.toFixed(2)} · ${PN} particles`;
+      el.stats.textContent = `${(stats.t / stats.n * 1000).toFixed(1)} ms/frame · worst ${(stats.worst * 1000).toFixed(0)} · script ${(stats.cpu / stats.n).toFixed(1)} ms · ${W}×${H} @${dpr.toFixed(2)} · ${pAct} particles · ×${view.z.toFixed(2)}`;
       stats.t = stats.n = stats.worst = stats.cpu = 0;
     }
   }
@@ -1369,28 +1700,33 @@ function frame(now) {
 function start() { if (!raf) { last = performance.now(); raf = requestAnimationFrame(frame); } }
 function stop() { cancelAnimationFrame(raf); raf = 0; }
 
-document.addEventListener('visibilitychange', () => { document.hidden ? stop() : start(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); else { watchSun(false); start(); } });
+setInterval(() => watchSun(false), 20000);
 let resizeTimer = 0;
 addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { layout(); if (ghost.on) { ghostPoint(ghost.t, GP); arrive(GP.x, GP.y); } }, 140); });
 reducedMQ.addEventListener('change', e => { REDUCED = e.matches; initParticles(); });
-if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { measureTitle(); buildVeil(); buildSoundings(); voronoiDirty = true; });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { measureTitle(); buildVeil(); });
 
 function boot(saved) {
-  let ed = 0; try { ed = localStorage.getItem('anton-miami-edition') === 'paper' ? 1 : 0; } catch (_) {}
-  if (saved && saved.ed != null) ed = saved.ed;
-  setEdition(ed, true); buildPalette();
-  if (saved && saved.proj) { toggleProjection(); proj.p = 1; }
+  saved = saved || {};
+  if (saved.ed != null) sun.override = saved.ed;
+  watchSun(true);
+  if (sun.override === (sun.up ? 1 : 0)) { sun.override = null; applyEdition(true); }
+  buildPalette();
+  if (saved.proj) { toggleProjection(); proj.p = 1; }
   proj.e = proj.p;
-  eggs = []; layout();
-  if (saved && saved.lens != null) lens.cur = lens.prev = saved.lens % 3;
-  if (saved && saved.buoys) for (const b of saved.buoys) { buoys.push({ x: b[0] * W, y: b[1] * H, u: b[0], v: b[1], n: 7, next: 2 + rand() * 5, alpha: 0, dead: false, fm: -1 }); }
+  layout();
+  if (saved.lens != null) lens.cur = lens.prev = saved.lens % 3;
+  if (saved.buoys) for (const b of saved.buoys) buoys.push({ x: b[0] * W, y: b[1] * H, u: b[0], v: b[1], n: 5, next: 2 + rand() * 6, alpha: 0, dead: false, fm: -1 });
   ghost.t = 7; ghostPoint(ghost.t, GP); arrive(GP.x, GP.y); lens.alpha = 0.62;
   // run the sea for a few seconds before the first frame, so the chart opens already alive
   for (let i = 0; i < 200; i++) { updateInput(STEP); step(); }
+  if (saved.view) { view.zt = clamp(saved.view[0], CFG.ZOOM[0], CFG.ZOOM[1]); view.ax = W / 2; view.ay = H / 2; view.wax = saved.view[1] * W; view.way = saved.view[2] * H; view.anchored = true; }
   if (!document.hidden) start();
 }
 const hot = window.claude && window.claude.hot;
-if (hot && hot.snapshot) hot.snapshot(() => ({ ed: edition.target, proj: proj.target, lens: lens.cur, buoys: buoys.filter(b => !b.dead).map(b => [b.u, b.v]) }));
+if (hot && hot.snapshot) hot.snapshot(() => ({ ed: sun.override, proj: proj.target, lens: lens.cur, view: [view.zt, view.cx / W, view.cy / H],
+  buoys: buoys.filter(b => !b.dead).map(b => [b.u, b.v]) }));
 if (hot && hot.ready) hot.ready(boot); else boot((hot && hot.data) || {});
 
 })();

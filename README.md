@@ -181,3 +181,9 @@ calculator works.
 npm install
 npx wrangler dev        # http://localhost:8787  (try /?v=chart&ab_debug=1)
 ```
+
+## License
+
+Borrow freely. The **code** (Worker, tracking, scripts) is [MIT](LICENSE). The **page designs**
+are [CC BY-NC 4.0](public/variants/LICENSE.md): learn from them, remix them, credit me. Please
+don't republish them as your own homepage.
