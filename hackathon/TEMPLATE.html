@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="description" content="REPLACE: one-line concept and core mechanic">
 <title>Hackathon NN · Genre · Title</title>
 <style>
@@ -10,12 +10,19 @@
     touch-action: none; -webkit-user-select: none; user-select: none;
     font-family: system-ui, -apple-system, sans-serif; color: #eee; }
   canvas { display: block; width: 100vw; height: 100vh; }
+  /* Keep important UI clear of notches and rounded corners: use these as minimum offsets. */
+  :root { --safe-top: env(safe-area-inset-top, 0px); --safe-right: env(safe-area-inset-right, 0px);
+          --safe-bottom: env(safe-area-inset-bottom, 0px); --safe-left: env(safe-area-inset-left, 0px); }
+  #mute { display: none; position: fixed; top: calc(8px + var(--safe-top)); right: calc(8px + var(--safe-right));
+    width: 44px; height: 44px; border: 0; border-radius: 22px; background: rgba(255,255,255,0.12);
+    color: #eee; font: 20px system-ui, sans-serif; cursor: pointer; }
   #err { display: none; position: fixed; inset: 0; background: #300; color: #fff;
     padding: 16px; white-space: pre-wrap; font: 14px monospace; overflow: auto; }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<button id="mute" aria-label="Mute sound" title="Mute (M)">&#128266;</button>
 <div id="err"></div>
 <script>
 /*
@@ -60,19 +67,45 @@
 
   var state = { mode: 'title', t: 0, last: 0 };
 
-  // ---- Audio: created lazily, only from a gesture
-  var audio = null;
+  // ---- Audio: created lazily, only from a gesture, always through the master
+  // gain so the mute button works. The mute button appears only once sound exists;
+  // entries without sound never show it.
+  var audio = null, master = null, muted = false;
+  var muteBtn = document.getElementById('mute');
   function ensureAudio() {
     if (!audio) {
       try {
         var AC = window.AudioContext || window.webkitAudioContext;
         audio = AC ? new AC() : null;
+        if (audio) {
+          master = audio.createGain();
+          master.gain.value = muted ? 0 : 0.6;
+          master.connect(audio.destination);
+          muteBtn.style.display = 'block';
+        }
       } catch (err) {
         audio = null;
       }
     }
     if (audio && audio.state === 'suspended') audio.resume();
     return audio;
+  }
+  function setMuted(m) {
+    muted = m;
+    if (master) master.gain.value = muted ? 0 : 0.6;
+    muteBtn.innerHTML = muted ? '&#128263;' : '&#128266;';
+    muteBtn.setAttribute('aria-label', muted ? 'Unmute sound' : 'Mute sound');
+  }
+  muteBtn.addEventListener('click', function (e) { e.stopPropagation(); setMuted(!muted); });
+  // A soft tone helper. Connect any custom nodes to master, never to audio.destination.
+  function tone(freq, dur, type, vol) {
+    var ac = ensureAudio(); if (!ac || muted) return;
+    var o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
+    o.type = type || 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol || 0.2, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + (dur || 0.2));
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + (dur || 0.2) + 0.02);
   }
 
   // ---- Input: one path for pointer and keyboard
@@ -84,11 +117,12 @@
 
   function onTap(x, y) {
     ensureAudio();
-    if (state.mode === 'title') { startGame(); return; }
+    if (state.mode === 'title') { tone(523, 0.25); startGame(); return; }
     // REPLACE: handle a tap in play at (x, y), CSS pixels
   }
 
   function onKey(key) {
+    if (key === 'm' || key === 'M') { setMuted(!muted); return; }
     ensureAudio();
     if (state.mode === 'title' && (key === ' ' || key === 'Enter')) { startGame(); return; }
     // REPLACE: handle keys in play
