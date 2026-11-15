@@ -56,6 +56,8 @@ wrangler.jsonc                 Worker config (variants, weights, experiment name
 | `npm run dev` | run locally at http://localhost:8787 (try `/?v=chart&ab_debug=1`) |
 | `npm test` | Worker unit tests |
 | `npm run check` | syntax check + dry-run Worker build |
+| `npm run analyze` | pull PostHog data → `reports/latest.md` (see Analysis) |
+| `npm run schedule` | run the analysis every morning on this Mac |
 
 ## One-time setup
 
@@ -126,7 +128,7 @@ either one. After deploying, paste the URL into LinkedIn's **Post Inspector**
 
 ## What's measured
 
-Every event carries `variant`, `ab_experiment`, `ab_assignment` (`new` / `returning` / `forced`) and `ab_preview`.
+Every event carries `variant`, `ab_experiment`, `ab_assignment` (`new` / `returning` / `forced`), `ab_preview` and `page_id` (one per page load). `ab_exposure` also records `in_app_browser` (LinkedIn's in-app browser etc.), `cpu_cores`, `device_memory_gb` and `connection`.
 
 | Event | When | Key properties |
 |---|---|---|
@@ -138,6 +140,7 @@ Every event carries `variant`, `ab_experiment`, `ab_assignment` (`new` / `return
 | `coords_pasted` | pasting coordinates (dawn) | `moved`, `place` |
 | `view_changed` | URL hash changes | `hash` |
 | `outbound_click` | any link off the site | `destination`, `href`, `label`, `seconds_on_page` |
+| `perf` | after 6 visible seconds | `fps`, `fps_min_1s`, `long_frames`, `load_ms`, `transfer_kb`: the designs differ a lot in weight and rendering cost, so this controls for speed |
 | `page_summary` | tab hidden / page closed | `visible_s`, `attentive_s` (visible + input in the last 15 s), `exit` (`outbound`/`left`), `exit_href`, `pointer_travel_screens`, `taps`, `drags`, `keys`, `distinct_keys`, `max_idle_s`, `heat_grid` (12×8, % of pointer time per cell) |
 
 PostHog's own data covers the rest: `$pageview` / `$pageleave`, autocaptured clicks, **heatmaps**
@@ -149,6 +152,30 @@ canvas recording off, set `RECORD_CANVAS = false` in `track.js`.
 numbers are cumulative within that load, so keep the row with the highest `seq` per `page_id`,
 then roll page loads up into sessions (the SQL below does this). `max_idle_s` includes the idle
 stretch still running when the visitor leaves.
+
+## Analysis
+
+`npm run analyze` pulls the experiment's events from PostHog, rolls them up **per visitor** (the
+unit the Worker randomises), and writes `reports/latest.md`, a dated copy, and a per-visitor CSV in
+`data/`. Both folders are git-ignored.
+
+The report covers:
+- **a verdict line:** keep running / winner / no clear winner / something's broken, judged against the pre-registered plan
+  (primary metric, 356 visitors per arm), with an ETA at the current traffic rate
+- **primary metric:** engaged ≥ 30 s, with Newcombe 95% CI, z-test p and Bayesian P(better)
+- **secondary metrics:** interaction, outbound clicks, bounce, visible/attentive time, pointer travel,
+  time to first input (bootstrap CIs, Mann–Whitney)
+- **segments:** mouse vs touch, in-app browsers, top traffic sources
+- **performance as a confounder:** frame rate and load time per design
+- **data quality:** sample-ratio-mismatch check, visitors who saw both designs, missing summaries
+
+Setup (once, on the Mac):
+1. PostHog → avatar → **Settings → User → Personal API keys → Create**, scopes **Query: Read** and
+   **Project: Read**. (This is different from the public `phc_` key in `track.js`.)
+2. `cp .env.example .env` and fill in the key and your **Project ID** (Settings → Project → General).
+3. `npm run analyze` to check it works. Try `npm run analyze -- --demo` first to see a sample report.
+4. `npm run schedule`: runs it every morning at 08:17 via launchd and posts a macOS notification
+   with the headline. `npm run schedule -- status` / `-- off` to check or remove.
 
 ## Running the test properly
 

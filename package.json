@@ -6,7 +6,9 @@
     "test": "node --test",
     "check": "node --check src/worker.js && node --check public/ab/track.js && wrangler deploy --dry-run --outdir .wrangler/dry-run",
     "ship": "bash scripts/ship.sh",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "analyze": "node scripts/analyze.mjs",
+    "schedule": "bash scripts/schedule-analysis.sh"
   },
   "repository": {
     "type": "git",
