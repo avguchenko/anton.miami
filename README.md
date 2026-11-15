@@ -45,6 +45,7 @@ src/worker.js                  split + cookie + www redirect + PostHog proxy
 test/worker.test.js            unit tests for the Worker (node --test)
 scripts/sync_pages.py          copies in new designs and re-applies the A/B additions
 scripts/ship.sh                npm run ship: sync → check → commit → push
+habits/                        habits.anton.miami: separate Worker (habit tracker, see below)
 wrangler.jsonc                 Worker config (variants, weights, experiment name, domains)
 ```
 
@@ -260,6 +261,40 @@ calculator works.
   `<meta name="ab-variant" content="<name>">` and the `track.js` script tag, add it to `VARIANTS`,
   and change `EXPERIMENT`. Changing `EXPERIMENT` re-randomises everyone.
 - **Ending the test:** set `VARIANTS` to the winner alone.
+
+## habits.anton.miami
+
+A separate, private Worker in [`habits/`](habits/): a daily habit tracker. Habits are rows, days
+are columns, and the month fills up left to right as you check things off. Above the grid:
+completion for today (with the last 14 days), this week (last 12 weeks), this month (last 12
+months) and a heatmap of every day this year.
+
+- **Add** a habit from the box under the grid; it starts counting the day you add it.
+- **Edit habits** shows move ↑↓, rename ✎ and remove ✕ on each row.
+- **Removing gets harder the more work a habit has.** No check-offs: it's deleted at once.
+  1–20: type its name. 21 or more: type its name, *hold* the button (5 s, plus 1 s per 20
+  check-offs, up to 30 s), and it still stays on the list through tomorrow, with a **Keep**
+  button, before it retires. The Worker enforces the name and the cooling-off, not just the page.
+  Retired habits keep their history in the charts.
+- Days before yesterday are locked so old days can't be quietly rewritten; **Unlock past days** opens them.
+- Data lives in one SQLite-backed Durable Object; it syncs across devices when a tab comes back
+  into view. Days are the browser's local dates.
+- One password (the `HABITS_PASSWORD` secret), a signed HttpOnly cookie that lasts a year,
+  and 5 wrong tries lock sign-in for 15 minutes. Changing the password signs every device out.
+  The site is `noindex`.
+
+**One-time setup**
+1. Deploy it: Workers & Pages → Create → **Import a repository** → `avguchenko/anton.miami` again,
+   Worker name `anton-miami-habits`, production branch `main`, deploy command
+   `npx wrangler deploy -c habits/wrangler.jsonc`. Optionally set *Build watch paths* to `habits/*`
+   (and `src/*`, `public/*` on the front-page Worker) so each only rebuilds for its own changes.
+   Or from the Mac: `npm run habits:deploy`.
+2. Set the password: `npx wrangler secret put HABITS_PASSWORD -c habits/wrangler.jsonc`
+   (or Worker → Settings → Variables and Secrets → add a **Secret**).
+3. `wrangler.jsonc` claims `habits.anton.miami` as a custom domain on deploy, which creates the DNS record.
+4. On your phone, open it and *Add to Home Screen*.
+
+Local: put `HABITS_PASSWORD=…` in `habits/.dev.vars`, then `npm run habits:dev`.
 
 ## License
 

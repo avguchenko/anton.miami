@@ -1,0 +1,21 @@
+{
+  // habits.anton.miami: daily habit tracker. A separate Worker from the front page;
+  // the page lives in ./public, the data in one SQLite-backed Durable Object.
+  // Password: `npx wrangler secret put HABITS_PASSWORD -c habits/wrangler.jsonc`
+  // (for `wrangler dev`, put HABITS_PASSWORD=… in habits/.dev.vars).
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "anton-miami-habits",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-11-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "HABITS", "class_name": "HabitsDO" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HabitsDO"] }],
+  "routes": [{ "pattern": "habits.anton.miami", "custom_domain": true }],
+  "observability": { "enabled": true }
+}
