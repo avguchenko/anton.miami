@@ -227,6 +227,21 @@ const ART = {"cell":384,"cols":10,"file":"/variants/dawn/constellations.webp","m
     h.alt -= Math.asin(6371 / m.dist) * Math.cos(h.alt);            // seen from the surface, not the Earth's centre
     return h;
   };
+  // The moment a body crosses the horizon, searching forward (dir +1) or back (dir -1) up to 26 hours
+  // in three-minute steps. Returns a time in milliseconds, or null if it does not cross.
+  const dayToMs = d => (d + 0.5 - 2440588 + 2451545) * 864e5;
+  function findCross(at, d, dir, rising) {
+    const h0 = -0.6 * RAD; let prev = at(d).alt;
+    for (let k = 1; k <= 520; k++) {
+      const a = at(d + dir * k * 3 / 1440).alt;
+      const up = dir > 0 ? prev < h0 && a >= h0 : a < h0 && prev >= h0, down = dir > 0 ? prev >= h0 && a < h0 : a >= h0 && prev < h0;
+      if (rising ? up : down) return dayToMs(d + dir * (k - 1 + (h0 - prev) / (a - prev)) * 3 / 1440);
+      prev = a;
+    }
+    return null;
+  }
+  // The rise and set that bound where a body is now: if it is up, its last rise and next set; if down, its last set and next rise.
+  const riseSet = (at, d) => { const up = at(d).alt > -0.6 * RAD; return { rise: findCross(at, d, up ? -1 : 1, true), set: findCross(at, d, up ? 1 : -1, false) }; };
   // Minutes until a body next climbs over the horizon, scanning the next 26 hours in three-minute steps.
   function nextRise(at, d) {
     const h0 = -0.6 * RAD; let prev = at(d).alt;
@@ -359,7 +374,7 @@ const ART = {"cell":384,"cols":10,"file":"/variants/dawn/constellations.webp","m
 
   let sun = { alt: 0, az: 0, v: [0, 1, 0] }, moon = { alt: 0, az: 0, v: [0, 1, 0], nv: [0, 1, 0.02], frac: 0.5, phase: 0.25 }, pal = palette(0), lastAlm = -1e9;
   const eclSun = new Float32Array(361 * 3), eclMoon = new Float32Array(361 * 3);   // the two paths, a point per degree of longitude, in local east-north-up
-  let riseAt = 0, sunRise = null, moonRise = null;   // minutes to the next rise, as of riseAt
+  let riseAt = 0, sunRise = null, moonRise = null, sunEv = { rise: null, set: null }, moonEv = { rise: null, set: null };   // minutes to the next rise, as of riseAt
   const PHASES = ['new moon', 'waxing crescent', 'first quarter', 'waxing gibbous', 'full moon', 'waning gibbous', 'last quarter', 'waning crescent'];
   const phaseName = p => p < .03 || p > .97 ? PHASES[0] : p < .22 ? PHASES[1] : p < .28 ? PHASES[2] : p < .47 ? PHASES[3] : p < .53 ? PHASES[4] : p < .72 ? PHASES[5] : p < .78 ? PHASES[6] : PHASES[7];
 
@@ -369,7 +384,7 @@ const ART = {"cell":384,"cols":10,"file":"/variants/dawn/constellations.webp","m
     const s = sunEq(d), m = moonEq(d);
     sun = sunAt(d); sun.v = vec(sun);
     const mh = moonAt(d);
-    if (ms - riseAt > 30000) { riseAt = ms; sunRise = nextRise(sunAt, d); moonRise = nextRise(moonAt, d); }
+    if (ms - riseAt > 30000) { riseAt = ms; sunRise = nextRise(sunAt, d); moonRise = nextRise(moonAt, d); sunEv = riseSet(sunAt, d); moonEv = riseSet(moonAt, d); }
     const el = Math.acos(Math.sin(s.dec) * Math.sin(m.dec) + Math.cos(s.dec) * Math.cos(m.dec) * Math.cos(s.ra - m.ra));
     const inc = Math.atan2(149598000 * Math.sin(el), m.dist - 149598000 * Math.cos(el));
     const ang = Math.atan2(Math.cos(s.dec) * Math.sin(s.ra - m.ra), Math.sin(s.dec) * Math.cos(m.dec) - Math.cos(s.dec) * Math.sin(m.dec) * Math.cos(s.ra - m.ra));
@@ -629,13 +644,22 @@ const ART = {"cell":384,"cols":10,"file":"/variants/dawn/constellations.webp","m
 
   // A graduated path across the sky: barely visible until the pointer rests on it, then a line with ticks and
   // ecliptic longitude lettered along it. Below the horizon it continues, fainter still, through the water.
-  const pathSun = { glow: 0 }, pathMoon = { glow: 0 };
+  const pathSun = { glow: 0, cross: [] }, pathMoon = { glow: 0, cross: [] };
   let qx = 0, qy = 0;
   function proj3(E, N, U) {
     const Z = E * spsi + N * cpsi, Zc = U * sphi + Z * cphi; if (Zc < 0.08) return false;
     qx = cx + f * (E * cpsi - N * spsi) / Zc; qy = cyP - f * (U * cphi - Z * sphi) / Zc; return true;
   }
   function drawPath(arr, col, name, above, other, st) {
+    if (above) {                              // where this path meets the horizon: its rising point in the east, its setting point in the west
+      st.cross.length = 0;
+      for (let k = 1; k <= 360; k++) {
+        const a = (k - 1) * 3, b = k * 3, U0 = arr[a + 2], U1 = arr[b + 2];
+        if ((U0 < 0) === (U1 < 0)) continue;
+        const fr = U0 / (U0 - U1), E = lerp(arr[a], arr[b], fr);
+        if (proj3(E, lerp(arr[a + 1], arr[b + 1], fr), 0) && qx > 0 && qx < W) st.cross.push({ x: qx, y: qy, east: E > 0 });
+      }
+    }
     ctx.beginPath();
     let pen = false, lx = 0, ly = 0, dmin = 1e9;
     const feel = above && ptr.on && !drag;
@@ -969,18 +993,27 @@ const ART = {"cell":384,"cols":10,"file":"/variants/dawn/constellations.webp","m
       const pn = proj(moon.nv); let nx = 0, ny = -1;
       if (pn) { const l = Math.hypot(pn[0] - mp[0], pn[1] - mp[1]) || 1; nx = (pn[0] - mp[0]) / l; ny = (pn[1] - mp[1]) / l; }
       const rx = -ny, ry = nx;                // lunar east (the Crisium side) on screen
-      ctx.clip(); ctx.rotate(-rot); ctx.transform(rx * moonR, ry * moonR, nx * moonR, ny * moonR, 0, 0);
+      // It stays hidden at naked-eye size and comes up faintly as you zoom in, on the sunlit part and,
+      // dimmer still, on the earthlit dark part.
+      const reveal = clamp((moonR - 38) / 45, 0, 1);
       const trace = poly => { ctx.beginPath(); for (let i = 0; i < poly.length; i++) { if (i) ctx.lineTo(poly[i][0], poly[i][1]); else ctx.moveTo(poly[i][0], poly[i][1]); } ctx.closePath(); };
-      ctx.fillStyle = rgba([92, 104, 138], 0.42);
-      for (const m of MARIA) { trace(m.poly); ctx.fill(); }
-      if (moonR > 40) {
-        ctx.lineWidth = 1 / moonR;
-        for (const c of CRATERS) {
-          if (!c[3]) continue;
-          trace(c.poly);
-          if (c[5]) { ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fill(); }
-          ctx.strokeStyle = 'rgba(60,72,108,0.55)'; ctx.stroke();
+      if (reveal > 0.01) for (const dark of [false, true]) {
+        ctx.save(); ctx.beginPath();
+        if (dark) { ctx.arc(0, 0, moonR, Math.PI / 2, 3 * Math.PI / 2); ctx.ellipse(0, 0, moonR * Math.abs(1 - 2 * k), moonR, 0, -Math.PI / 2, Math.PI / 2, k > 0.5); }
+        else { ctx.arc(0, 0, moonR, -Math.PI / 2, Math.PI / 2); ctx.ellipse(0, 0, moonR * Math.abs(1 - 2 * k), moonR, 0, Math.PI / 2, -Math.PI / 2, k < 0.5); }
+        ctx.closePath(); ctx.clip(); ctx.rotate(-rot); ctx.transform(rx * moonR, ry * moonR, nx * moonR, ny * moonR, 0, 0);
+        ctx.fillStyle = dark ? rgba([8, 12, 30], 0.3 * reveal) : rgba([92, 104, 138], 0.17 * reveal);
+        for (const m of MARIA) { trace(m.poly); ctx.fill(); }
+        if (moonR > 60) {
+          ctx.lineWidth = 1 / moonR;
+          for (const c of CRATERS) {
+            if (!c[3]) continue;
+            trace(c.poly);
+            if (c[5] && !dark) { ctx.fillStyle = rgba([255, 255, 255], 0.45 * reveal); ctx.fill(); }
+            ctx.strokeStyle = dark ? rgba([170, 186, 230], 0.2 * reveal) : rgba([60, 72, 108], 0.26 * reveal); ctx.stroke();
+          }
         }
+        ctx.restore();
       }
       ctx.restore();
       ctx.fillStyle = 'rgba(238,242,244,0.8)';
@@ -993,9 +1026,9 @@ const ART = {"cell":384,"cols":10,"file":"/variants/dawn/constellations.webp","m
           if (ft.level > level) continue;
           const ux = ft.c[0] * rx + ft.c[1] * nx, uy = ft.c[0] * ry + ft.c[1] * ny;             // unit-disc position on screen axes
           const u = ux * cs + uy * sn, w = -ux * sn + uy * cs;
-          if (u <= (1 - 2 * k) * Math.sqrt(Math.max(0, 1 - w * w)) + 0.03) continue;                 // in the dark: leave it unnamed
+          const inDark = u <= (1 - 2 * k) * Math.sqrt(Math.max(0, 1 - w * w));
           const x = mp[0] + ux * moonR, y = mp[1] + uy * moonR, crater = ft.crater;
-          ctx.fillStyle = 'rgba(18,24,52,0.85)';
+          ctx.fillStyle = inDark ? 'rgba(204,216,250,0.42)' : 'rgba(18,24,52,0.6)';
           if (ft[0] === 'Apollo 11') { ctx.fillRect(x - 1.5, y - 1.5, 3, 3); }
           ctx.fillText(ft[0], x, y + (crater ? Math.max(8, ft[3] / 2 / 1737.4 * moonR + 7) : 0));
         }
@@ -1035,6 +1068,28 @@ const ART = {"cell":384,"cols":10,"file":"/variants/dawn/constellations.webp","m
 
   }
 
+  // Rest the pointer where the ecliptic or the moon's path meets the horizon and it tells you when the
+  // sun or moon rises (east) or sets (west) there: the time in UTC, at home also in Miami time, and how long from now.
+  function drawRiseSet() {
+    if (!ptr.on || drag) return;
+    const now = Date.now();
+    for (const [st, ev, body, col] of [[pathSun, sunEv, 'Sun', [255, 214, 170]], [pathMoon, moonEv, 'Moon', [190, 208, 255]]]) {
+      for (const c of st.cross) {
+        if (Math.hypot(ptr.x - c.x, ptr.y - c.y) > 34) continue;
+        const when = c.east ? ev.rise : ev.set; if (when == null) continue;
+        const mins = (when - now) / 60000, utc = new Date(when).toISOString().slice(11, 16);
+        let local = '';
+        if (atHome) try { local = new Date(when).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit' }) + ' Miami · '; } catch (e) {}
+        ctx.font = `400 11px ${MONO}`; ctx.textAlign = c.x < 110 ? 'left' : c.x > W - 110 ? 'right' : 'center'; ctx.textBaseline = 'bottom';
+        ctx.shadowColor = 'rgba(4,11,22,0.95)'; ctx.shadowBlur = 6; ctx.fillStyle = rgba(col, 0.95);
+        ctx.fillText(`${body}${c.east ? 'rise' : 'set'} ${utc} UTC`, c.x, c.y - 46);
+        ctx.font = `300 10px ${MONO}`;
+        ctx.fillText(local + (mins >= 0 ? 'in ' + span(mins) : span(-mins) + ' ago'), c.x, c.y - 32);
+        ctx.shadowBlur = 0; ctx.strokeStyle = rgba(col, 0.9); ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(c.x, c.y, 5, 0, TAU); ctx.stroke();
+      }
+    }
+  }
   let headBottom = 0, tagsBottom = 0;
   function drawPointers() {
     const sp = proj(sun.v), mp = proj(moon.v), sunR = f * 0.05, moonR = f * 0.034;
@@ -1250,15 +1305,15 @@ const ART = {"cell":384,"cols":10,"file":"/variants/dawn/constellations.webp","m
      when the visitor throws a stone, travels, changes constellation style, or settles on a new view. */
   const counts = { stones: 0, places: 0, styleToggles: 0, views: 0 };
   let lastStone = null;
-  const r3 = (v, d = 3) => +v.toFixed(d);
+  const r3 = (v, d = 3) => +v.toFixed(d), isoOrNull = x => x == null ? null : new Date(x).toISOString();
   function snapshot() {
     const ms = Date.now(), d = toDays(ms), q = pointerInfo(lastT);
     return {
       place: titleEl.textContent, lat: r3(LAT0, 5), lon: r3(LON0, 5), atHome,
       heading: r3(((psi / RAD) % 360 + 360) % 360), pitch: r3(phi / RAD), zoom: r3(zoom), fieldOfView: r3(2 * Math.atan(W / 2 / f) / RAD, 1),
       utc: new Date(ms).toISOString(), solarTimeHours: r3((((sidereal(d) - sunEq(d).ra) / TAU * 24 + 12) % 24 + 24) % 24),
-      sun: { altitude: r3(sun.alt / RAD), azimuth: r3(sun.az / RAD), minutesToRise: sunRise == null ? null : r3(Math.max(0, sunRise - (ms - riseAt) / 60000), 1) },
-      moon: { altitude: r3(moon.alt / RAD), azimuth: r3(moon.az / RAD), illuminated: r3(moon.frac), phase: phaseName(moon.phase), minutesToRise: moonRise == null ? null : r3(Math.max(0, moonRise - (ms - riseAt) / 60000), 1) },
+      sun: { altitude: r3(sun.alt / RAD), azimuth: r3(sun.az / RAD), riseUtc: isoOrNull(sunEv.rise), setUtc: isoOrNull(sunEv.set), minutesToRise: sunRise == null ? null : r3(Math.max(0, sunRise - (ms - riseAt) / 60000), 1) },
+      moon: { altitude: r3(moon.alt / RAD), azimuth: r3(moon.az / RAD), riseUtc: isoOrNull(moonEv.rise), setUtc: isoOrNull(moonEv.set), illuminated: r3(moon.frac), phase: phaseName(moon.phase), minutesToRise: moonRise == null ? null : r3(Math.max(0, moonRise - (ms - riseAt) / 60000), 1) },
       planets: planets.map(p => ({ name: p.name, altitude: r3(p.alt / RAD), azimuth: r3(p.az / RAD), magnitude: r3(p.mag, 1) })),
       pointer: q && (q.sky ? { sky: true, altitude: r3(q.altitude), azimuth: r3(q.azimuth) } : { sky: false, lat: r3(q.lat, 5), lon: r3(q.lon, 5), range_m: r3(q.range_m, 0), waveHeight_m: r3(q.waveHeight_m, 2) }),
       constellation: hoverCon, star: hoverStar, constellationStyle: conStyle,
@@ -1308,7 +1363,7 @@ const ART = {"cell":384,"cols":10,"file":"/variants/dawn/constellations.webp","m
     } else idleG = null;
     step(); step();
     drawSky(t); if (seaOn) { drawSea(t); drawGratLabels(); drawBelow(); drawReticle(); }
-    drawAltAxis(); drawPointers(); drawStones(now);
+    drawAltAxis(); drawPointers(); drawRiseSet(); drawStones(now);
     lastT = t; watchView(now);
     if (frameN++ % 5 === 0) readout(t);
     requestAnimationFrame(frame);
