@@ -108,6 +108,20 @@
     o.connect(g); g.connect(master); o.start(t); o.stop(t + (dur || 0.2) + 0.02);
   }
 
+  // ---- Network (optional): use only when the idea needs live data.
+  // Resolves to parsed JSON, or to null on any failure or after a timeout,
+  // so the caller always has a plain branch for "couldn't load" and the page
+  // never throws offline. Never put keys or secrets in this file, and show the
+  // data's source on screen.
+  function getJSON(url, ms) {
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, ms || 8000);
+    return fetch(url, ctrl ? { signal: ctrl.signal } : {})
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .catch(function () { return null; })
+      .then(function (v) { clearTimeout(timer); return v; });
+  }
+
   // ---- Input: one path for pointer and keyboard
   function startGame() {
     state.mode = 'play';

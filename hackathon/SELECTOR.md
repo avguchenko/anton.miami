@@ -14,10 +14,19 @@ Anton opens each entry cold, on a phone or a laptop, and judges three things:
 does it work the moment it loads, is the idea original, and does it feel
 finished. Every entry must also show taste, empathy and principled thinking.
 
-The builder works under hard limits: one HTML file, all code inline, no
-libraries, no network at all (no fonts, images, APIs or analytics), touch and
-mouse/keyboard, phone and desktop. Anything the idea needs must be generated in
-code: shapes, sound, text, data.
+Empathy means what the entry does for a human being: it starts from a real
+need, you can name who it's for and what they're dealing with, and something is
+different for them afterwards. A clever toy that does nothing for anyone fails
+it, however polished.
+
+The builder works under these limits: one HTML file, all code inline, no
+libraries or external scripts, touch and mouse/keyboard, phone and desktop. The
+network is allowed when it serves the idea: live data from public APIs, images,
+web fonts. Nothing may need an API key, login or payment; no analytics or
+trackers; nothing about the person sent anywhere they didn't ask for. The
+builder's sandbox often can't reach outside hosts, so it builds from the
+documented response format you provide, and the entry must still work, or say
+plainly what's missing, when offline.
 
 ## Read first
 
@@ -31,6 +40,25 @@ code: shapes, sound, text, data.
    suspicious of. Read that list as a list of ideas you've already had too
    many times.
 
+## Research round 1: before choosing
+
+Use your web search and fetch tools. Spend real effort here; it's the
+difference between an idea that sounds good and one that matters.
+- Real needs: look for what people are struggling with, deciding, or wishing
+  for right now. Today's date matters: seasons, holidays, current events,
+  things that changed recently. Forums, Q&A sites, recent articles and
+  frequently asked questions are good sources. Note the specific human
+  situations you find.
+- Usable data: look for public APIs or open datasets that need no key and allow
+  browser requests (CORS), and that could power something useful (weather,
+  air quality, tides, sunrise, transit, public health, open government data,
+  dictionaries, open encyclopedias, astronomy, earthquakes, and so on).
+- Keep a short list of what you found with links. Your candidates should draw
+  on it.
+
+If you have no web tools, say so in the output and choose from your own
+knowledge, preferring ideas that need no live data.
+
 ## How to choose
 
 **Generate widely.** Write at least twelve candidates across at least six
@@ -39,7 +67,9 @@ tool, simulation, story, generative art, data piece, ritual, and anything else
 you can name. At least three candidates must start from a real-world
 observation (something about how people behave, how a natural system works, a
 piece of math, a small daily annoyance) rather than from a game mechanic. At
-least two must be useful, not only entertaining.
+least two must be useful, not only entertaining. At least three must come
+directly from a need you found in research round 1. Each candidate must name the
+person it's for and the moment they'd reach for it.
 
 **Cut hard.** Discard any candidate that:
 - repeats or reskins an entry in INDEX.md, or shares the last entry's genre;
@@ -53,8 +83,9 @@ least two must be useful, not only entertaining.
   respect the person using it? Would its rules be fair and its facts true?
 - Taste: does the idea suggest a specific, distinctive look and feel of its
   own, rather than a default one? Can it be done with restraint?
-- Empathy: will a newcomer on a phone, with sound off, get it in five seconds
-  and get something satisfying within thirty?
+- Empathy: does it do something real for a specific person? Who, in what
+  situation, and what is different for them afterwards? Score 1 for a toy that
+  helps no one, 5 for something a person would be genuinely glad exists.
 - Originality: would Anton say "I haven't seen that before"?
 - Buildability: could a strong builder land it in one file, in one sitting,
   with no bugs a newcomer would hit? Be pessimistic. Physics, pathfinding,
@@ -68,10 +99,28 @@ least two must be useful, not only entertaining.
   them. The path must not require changing the entry into something
   manipulative: no ads, tracking, dark patterns or paywalls inside the entry.
 
+Separately, rule out anything a newcomer on a phone couldn't understand within
+five seconds or enjoy within thirty; that's a baseline, not a score.
+
 Choose by total of the first five scores. Buildability below 3 is
 disqualifying. Revenue potential breaks ties and can lift a candidate by at
 most one point overall; it never outweighs a principle, taste or empathy
 problem.
+
+## Research round 2: after choosing, before the spec
+
+Research the pick itself.
+- Prior art: search for existing apps, sites and projects that do the same
+  thing. If something close exists, either sharpen what's different about yours
+  or fall back to the runner-up.
+- Facts: verify every fact, number or claim the entry will state, with sources.
+- Data: if the entry uses live data, fetch each endpoint yourself. Confirm it
+  needs no key, allows browser (CORS) requests, and is free to use. Record the
+  exact URL pattern, a trimmed sample response with the fields the builder will
+  use, any rate limit, and what the entry should show when it fails. If you
+  can't confirm an endpoint, don't use it.
+- Revenue: briefly check whether people already pay for something like this,
+  and what for.
 
 **Then challenge your pick.** Before writing the spec, argue against your top
 choice in two or three sentences as the reviewer would. If the argument wins,
@@ -93,10 +142,19 @@ TASTE: one line on how it will look and feel distinctive, plus
   MOTION: how things move, and what changes in reduced-motion mode
   SOUND: none, or what and why, and that it's muted by the template's button
 EMPATHY: one line, plus
+  WHO IT'S FOR: the person, the situation they're in when they open it, and what
+    is different for them afterwards
   FIRST SCREEN: the exact words a newcomer sees, one line of instruction at most
   FIRST 30 SECONDS: what they do and what satisfying thing happens
   FAILURE AND RECOVERY: what can go wrong and how they get back
-PRINCIPLED: one line, plus any facts the entry states and why they're true
+PRINCIPLED: one line, plus any facts the entry states, each with a source
+RESEARCH:
+  NEEDS: the two or three findings from round 1 that led to this pick, with links
+  PRIOR ART: what exists and how this differs, with links
+  DATA: for each endpoint, the URL pattern, a trimmed sample response, the
+    fields used, CORS confirmed yes/no, rate limit, and the offline message; or
+    "none"
+  WEB ACCESS: yes, or no and what that limited
 CORE MECHANIC: what the person does, what the system does in response, in
   plain steps
 ENDING: how a session ends, resets or is saved

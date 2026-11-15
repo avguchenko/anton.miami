@@ -55,13 +55,14 @@ def new_page(browser, w, h, touch):
     page = browser.new_page(viewport={"width": w, "height": h}, has_touch=touch, is_mobile=touch)
     errs = []
     page.on("pageerror", lambda e: errs.append("pageerror: " + str(e)[:200]))
-    page.on("console", lambda m: errs.append("console: " + m.text[:200]) if m.type == "error" else None)
+    page.on("console", lambda m: errs.append("console: " + m.text[:200])
+            if m.type == "error" and not m.text.startswith("Failed to load resource") else None)
 
     def route(r, req=None):
         if r.request.url.startswith(("file:", "data:", "blob:")):
             r.continue_()
         else:
-            errs.append("network: " + r.request.url[:120]); r.abort()
+            r.abort()  # probe runs offline on purpose; graceful degradation is part of the test
     page.route("**/*", route)
     page.goto("file://" + path, wait_until="load")
     page.wait_for_timeout(1200)
@@ -213,6 +214,9 @@ with sync_playwright() as p:
             "audio_without_mute_control": ("AudioContext" in src) and not any(w in src.lower() for w in ["mute", "sound off", "sound: off", "🔇"]),
             "uses_Math_random_for_core_rules (check fairness)": "Math.random" in src,
             "localStorage_without_try": "localStorage" in src and "try" not in src,
+            "network_without_error_handling (offline must not break it)": ("fetch(" in src) and (".catch" not in src and "try" not in src),
+            "network_without_timeout (a hung request can leave a spinner forever)": ("fetch(" in src) and ("AbortController" not in src and "timeout" not in src.lower()),
+            "live_data_without_visible_source (label where data comes from)": bool(__import__('re').search(r"https?:", src)) and not any(w in src.lower() for w in ["source:", "data from", "via "]),
         }
         return {k: v for k, v in checks.items() if v}
     run("code_smells", code_smells)

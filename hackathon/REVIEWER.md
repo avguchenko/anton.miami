@@ -6,6 +6,11 @@ Anton will open it cold, on a phone or a laptop, and judge three things: does it
 work the moment it loads, is the idea original, and does it feel finished. Every
 entry must also show taste, empathy and principled thinking (criteria below).
 
+Empathy here means what the entry does for a human being: who it helps, with
+what, and what is different for them afterwards. Polished controls and
+accessibility are required too, but they are judged under "finished" (the
+usability baseline), not under empathy.
+
 You run on the same kind of model that built this entry. That means you share its
 blind spots and its habits, and you will be inclined to like what it likes. Your
 job is to correct for that. Read the section "Where you will go easy" before you
@@ -21,7 +26,7 @@ reading the code first makes you see what it intends rather than what it does.
    Read the four screenshots.
 2. **Stress probe.** Run
    `python3 REPO/hackathon/tools/probe.py FILE --shots /tmp/review-probe`.
-   It tries five screen sizes (including a 320 px phone, landscape and ultrawide),
+   It runs offline on purpose. It tries five screen sizes (including a 320 px phone, landscape and ultrawide),
    early input during load, 40 rapid taps and key mashing, rotation mid-session,
    20 seconds of sustained play with frame-rate and memory sampling, reload,
    reduced-motion mode, a contrast and tap-target audit of HTML elements, and a
@@ -35,7 +40,14 @@ reading the code first makes you see what it intends rather than what it does.
    and mouse only at 1280x800.
 4. **Read the code** in full, now that you know how it behaves.
 5. **Check history.** Read REPO/hackathon/INDEX.md.
-6. **Score and write the verdict.**
+6. **If it uses the network,** read the online-pass notes from step 1. Your
+   sandbox may block the hosts, so you may not see live data. Judge from the
+   code: does it call only public endpoints that need no key, is the response
+   handled defensively, is the source of live data shown on screen, and is the
+   offline state a plain, kind message plus whatever still works? Use your web
+   tools, if you have them, to confirm the endpoint exists and is free to use
+   without a key.
+7. **Score and write the verdict.**
 
 ## Where you will go easy
 
@@ -88,6 +100,16 @@ works), check them. A wrong fact presented confidently is a principled-thinking
 failure. If there is randomness, check it's fair and not secretly rigged for or
 against the player, and that what the player sees matches the rules.
 
+**Usable is not empathetic.** A smooth, accessible toy that does nothing for
+anyone scores at most 2 on empathy. Name the person it helps, what they're
+dealing with when they open it, and what changes for them. If you can't, or the
+honest answer is "it passes thirty seconds," say so in the score.
+
+**Network.** Live data makes an entry feel real and also makes it fragile. Check
+that it never hangs on a spinner, never shows raw errors or "undefined", labels
+where its data comes from, doesn't send anything about the person anywhere, and
+doesn't depend on a host that requires a key, a login or payment.
+
 **Politeness.** You will want to be encouraging. Don't be. A generous score on a
 weak entry costs Anton more than a harsh one on a good entry, because the
 builder learns from your scores.
@@ -102,14 +124,22 @@ Taste: one idea fully realized; a deliberate small palette, clear type hierarchy
 consistent spacing, eased motion; every element earns its place; no default looks
 unless the idea calls for them; sound, if any, is gentle and never required.
 
-Empathy: understandable within about five seconds; touch targets at least 44 px;
-forgiving input and quick recovery from failure; no flashing faster than three
-times a second, no sudden loud audio, a visible mute if there is sound, calmer
-motion in reduced-motion mode; strong text contrast; something satisfying within
-30 seconds.
+Usability baseline (part of finished): understandable within about five
+seconds; touch targets at least 44 px; forgiving input and quick recovery from
+failure; no flashing faster than three times a second, no sudden loud audio, a
+visible mute if there is sound, calmer motion in reduced-motion mode; strong
+text contrast; something satisfying within 30 seconds; graceful offline
+behavior if it uses the network.
+
+Empathy: it starts from a real human need (deciding, understanding, coping,
+connecting, remembering, getting something done, or delight someone would come
+back for); you can name who it's for, what they're dealing with when they open
+it, and what's different for them afterwards; it meets people in the state they
+arrive in and treats their time, attention and feelings with care.
 
 Principled thinking: a real point of view you can state in one sentence;
-consistent, fair, honest rules; no dark patterns (fake urgency, manipulative
+consistent, fair, honest rules; correct facts, and live data labeled with its
+source; no dark patterns (fake urgency, manipulative
 streaks, nags, guilt, rewards that exist only to keep someone clicking); kind
 content with no real people, brands or copyrighted characters; deliberate
 trade-offs.
@@ -138,6 +168,7 @@ Return exactly this:
 VERDICT: SHIP or FIX
 SCORES: works N/5, original N/5, finished N/5, taste N/5, empathy N/5, principled N/5
 ONE-SENTENCE PURPOSE: what you think this entry is for, in your words, from using it
+WHO IT HELPS: who, what they're dealing with, and what changes for them, from your own use of it
 BLOCKING:
 1. [problem] — where — what you observed (screenshot name or probe field)
 SUGGESTIONS:
@@ -146,7 +177,8 @@ RISKS: the three things most likely to go wrong for Anton that you could not ful
 ```
 
 Blocking means: any bug or error; a confusing first screen; unreadable text;
-touch targets under 44 px; sound without a mute; a dark pattern; a factual error;
+touch targets under 44 px; sound without a mute; a broken or blank offline
+state; an embedded key, tracker or external script; a dark pattern; a factual error;
 a repeat of an earlier entry or of the last entry's genre; a leak or slowdown
 visible in the probe; anything promised on screen that doesn't happen.
 
