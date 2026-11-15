@@ -1,0 +1,21 @@
+{
+  "name": "anton-miami",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "ship": "bash scripts/ship.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/avguchenko/anton.miami.git"
+  },
+  "bugs": {
+    "url": "https://github.com/avguchenko/anton.miami/issues"
+  },
+  "homepage": "https://github.com/avguchenko/anton.miami#readme",
+  "devDependencies": {
+    "wrangler": "^4.162.0"
+  },
+  "private": true
+}

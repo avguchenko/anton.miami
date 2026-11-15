@@ -1,0 +1,30 @@
+{
+  // anton.miami: Worker that splits visitors between two front pages (A/B test)
+  // and proxies analytics to PostHog. Static files live in ./public.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "anton-miami",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-11-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    // The Worker runs first on every request so it can pick a variant for "/"
+    // and proxy /ingest/*; everything else is handed straight to the assets.
+    "run_worker_first": true
+  },
+  "vars": {
+    // Comma-separated variant names; each must exist as public/variants/<name>/index.html.
+    "VARIANTS": "dawn,chart",
+    // Matching weights (same order). "1,1" = 50/50.
+    "WEIGHTS": "1,1",
+    // Bump this to start a fresh experiment: everyone is re-randomised.
+    "EXPERIMENT": "front-page-2026-11",
+    // PostHog cloud region: "us" or "eu".
+    "POSTHOG_REGION": "us"
+  },
+  "routes": [
+    { "pattern": "anton.miami", "custom_domain": true },
+    { "pattern": "www.anton.miami", "custom_domain": true }
+  ],
+  "observability": { "enabled": true }
+}
