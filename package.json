@@ -8,7 +8,8 @@
     "ship": "bash scripts/ship.sh",
     "deploy": "wrangler deploy",
     "analyze": "node scripts/analyze.mjs",
-    "schedule": "bash scripts/schedule-analysis.sh"
+    "schedule": "bash scripts/schedule-analysis.sh",
+    "autoship": "bash scripts/autoship.sh"
   },
   "repository": {
     "type": "git",

@@ -58,6 +58,7 @@ wrangler.jsonc                 Worker config (variants, weights, experiment name
 | `npm run check` | syntax check + dry-run Worker build |
 | `npm run analyze` | pull PostHog data → `reports/latest.md` (see Analysis) |
 | `npm run schedule` | run the analysis every morning on this Mac |
+| `npm run autoship` | check the design folder hourly and publish changes automatically |
 
 ## One-time setup
 
@@ -103,6 +104,15 @@ That pulls from GitHub, copies in the latest `../anton.miami/index.html` (dawn) 
 `../anton.miami/alternative1/index.html` (chart), re-applies the tracking/preview tags/links,
 checks everything, commits and pushes. Cloudflare **Workers Builds** is connected to the repo
 and deploys every push to `main` automatically, so there is no deploy command to run.
+
+### Hourly auto-publish
+
+`npm run autoship` installs a launchd job on the Mac that checks the design folder every hour
+and publishes changes on its own: the same sync → check → commit → push as `npm run ship`.
+It waits until the files have been untouched for 10 minutes (so a page isn't grabbed mid-edit),
+skips if this repo has unrelated local changes, refuses pages that look truncated or lost
+their tracking, and posts a macOS notification when something goes live.
+`npm run autoship -- status` shows the last few checks; `-- off` removes it.
 
 ## Links to share
 
