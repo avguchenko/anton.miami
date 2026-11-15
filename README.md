@@ -55,6 +55,19 @@ browser console.
 Open `https://anton.miami/?ab_optout=1` once in every browser and on every phone you use (undo with
 `?ab_optout=0`). Visitors with Global Privacy Control or Do Not Track turned on are never tracked.
 
+## Publishing updates
+
+The page designs are edited in the separate `anton.miami` folder next to this repo. To publish:
+
+```
+npm run ship                       # or: npm run ship -- "what changed"
+```
+
+That pulls from GitHub, copies in the latest `../anton.miami/index.html` (dawn) and
+`../anton.miami/alternative1/index.html` (chart), re-applies the tracking/preview tags/links,
+checks everything, commits and pushes. Cloudflare **Workers Builds** is connected to the repo
+and deploys every push to `main` automatically, so there is no deploy command to run.
+
 ## Links to share
 
 LinkedIn and most apps hide where a click came from, so give each profile its own tagged link:
