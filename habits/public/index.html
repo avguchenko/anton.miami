@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#fcfcfb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)">
+<title>Habits</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Habits">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<script type="module" src="/app.js"></script>
+</head>
+<body>
+
+<main id="login" class="login" hidden>
+  <form id="login-form" class="login-card">
+    <h1>Habits</h1>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit" class="btn primary">Sign in</button>
+    <p class="form-error" id="login-error" role="alert"></p>
+  </form>
+</main>
+
+<main id="app" class="app" hidden>
+  <header class="top">
+    <div>
+      <h1>Habits</h1>
+      <p class="today-label" id="today-label"></p>
+    </div>
+    <div class="top-actions">
+      <button class="btn ghost" id="toggle-edit" aria-pressed="false">Edit habits</button>
+      <button class="btn ghost" id="toggle-past" aria-pressed="false" title="Days before yesterday are locked so old days can't be quietly rewritten">Unlock past days</button>
+      <button class="btn ghost" id="logout">Sign out</button>
+    </div>
+  </header>
+
+  <section class="tiles" aria-label="Completion">
+    <article class="tile" id="tile-day"></article>
+    <article class="tile" id="tile-week"></article>
+    <article class="tile" id="tile-month"></article>
+    <article class="tile tile-year" id="tile-year"></article>
+  </section>
+
+  <section class="board" aria-label="Habit grid">
+    <div class="board-head">
+      <button class="btn icon" id="prev-month" aria-label="Previous month">‹</button>
+      <h2 id="month-label"></h2>
+      <button class="btn icon" id="next-month" aria-label="Next month">›</button>
+      <button class="btn ghost small" id="this-month">Today</button>
+    </div>
+    <div class="grid-scroll" id="grid-scroll">
+      <table class="grid" id="grid"></table>
+    </div>
+    <form class="add" id="add-form" autocomplete="off">
+      <input id="add-name" maxlength="80" placeholder="New habit, e.g. Read 20 pages" aria-label="New habit">
+      <button class="btn primary" type="submit">Add habit</button>
+    </form>
+    <p class="empty" id="empty" hidden>No habits yet. Add the first one above; it starts counting today.</p>
+    <details class="retired" id="retired" hidden>
+      <summary></summary>
+      <ul></ul>
+    </details>
+  </section>
+</main>
+
+<dialog id="remove-dialog" class="dialog">
+  <form method="dialog" id="remove-form">
+    <h2 id="rm-title"></h2>
+    <div id="rm-body"></div>
+    <div class="field" id="rm-type-field">
+      <label for="rm-type" id="rm-type-label"></label>
+      <input id="rm-type" autocomplete="off" spellcheck="false">
+    </div>
+    <p class="form-error" id="rm-error" role="alert"></p>
+    <div class="dialog-actions">
+      <button class="btn primary" value="cancel" id="rm-cancel" autofocus>Keep it</button>
+      <button class="btn danger hold" type="button" id="rm-go"><span class="hold-fill"></span><span class="hold-text"></span></button>
+    </div>
+  </form>
+</dialog>
+
+<div class="tip" id="tip" role="tooltip" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

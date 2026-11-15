@@ -1,0 +1,9 @@
+{
+  "name": "Habits",
+  "short_name": "Habits",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fcfcfb",
+  "theme_color": "#184f95",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

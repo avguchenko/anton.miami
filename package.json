@@ -4,7 +4,10 @@
   "scripts": {
     "dev": "wrangler dev",
     "test": "node --test",
-    "check": "node --check src/worker.js && node --check public/ab/track.js && wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "check": "node --check src/worker.js && node --check public/ab/track.js && wrangler deploy --dry-run --outdir .wrangler/dry-run && npm run habits:check",
+    "habits": "wrangler dev -c habits/wrangler.jsonc --port 8788 --ip 127.0.0.1 --persist-to habits/data --var HABITS_LOCAL:1",
+    "habits:check": "node --check habits/src/worker.js && node --check habits/public/app.js && wrangler deploy --dry-run -c habits/wrangler.jsonc --outdir .wrangler/habits-dry-run",
+    "habits:deploy": "wrangler deploy -c habits/wrangler.jsonc",
     "ship": "bash scripts/ship.sh",
     "deploy": "wrangler deploy",
     "analyze": "node scripts/analyze.mjs",
