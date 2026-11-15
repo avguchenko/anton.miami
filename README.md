@@ -111,7 +111,8 @@ and deploys every push to `main` automatically, so there is no deploy command to
 and publishes changes on its own: the same sync → check → commit → push as `npm run ship`.
 It waits until the files have been untouched for 10 minutes (so a page isn't grabbed mid-edit),
 skips if this repo has unrelated local changes, refuses pages that look truncated or lost
-their tracking, and posts a macOS notification when something goes live.
+their tracking, and posts a macOS notification when something goes live. Its commits are unsigned (signing
+would need a click from you); manual commits are unaffected.
 `npm run autoship -- status` shows the last few checks; `-- off` removes it.
 
 ## Links to share
