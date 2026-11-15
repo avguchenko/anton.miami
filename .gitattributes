@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.bundle binary
+# The page designs are large single-file HTML; keep them out of language stats and diffs noise
+public/variants/** linguist-documentation
