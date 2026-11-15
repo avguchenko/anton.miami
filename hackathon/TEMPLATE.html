@@ -19,7 +19,7 @@
 <div id="err"></div>
 <script>
 /*
-  Hackathon skeleton. Replace the REPLACE blocks; keep the plumbing.
+  Hackathon skeleton. Fill in every marked placeholder block and delete the markers; keep the plumbing.
   - Errors show on screen instead of a blank page.
   - Canvas is sized from the viewport and devicePixelRatio, and resizes.
   - One pointer handler covers mouse, touch and pen; one key handler covers keyboard.
@@ -33,6 +33,10 @@
   window.addEventListener('error', function (e) {
     errBox.style.display = 'block';
     errBox.textContent += (e.message || 'Error') + '\n';
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    errBox.style.display = 'block';
+    errBox.textContent += 'Unhandled: ' + (e.reason && e.reason.message || e.reason) + '\n';
   });
 
   var canvas = document.getElementById('c');
