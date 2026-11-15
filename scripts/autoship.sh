@@ -20,6 +20,8 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG="$REPO/reports/autoship.log"
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*"; }
+# Undo a partial sync so a bad edit never leaves the repo dirty (which would block later runs)
+discard_sync() { git checkout -q -- . 2>/dev/null || true; git clean -qfd public/variants 2>/dev/null || true; }
 notify() { [ "$(uname)" = Darwin ] && osascript -e "display notification \"$1\" with title \"anton.miami\"" 2>/dev/null || true; }
 
 run_once() {
@@ -36,8 +38,17 @@ run_once() {
   if [ -n "$(git status --porcelain)" ]; then log "skip: repo has uncommitted local changes; not auto-publishing over them"; return 0; fi
   [ "$(git branch --show-current)" = main ] || { log "skip: not on main"; return 0; }
 
-  git pull --ff-only --quiet
-  python3 scripts/sync_pages.py "$dawn" "$chart" >/dev/null
+  git pull --ff-only --quiet || { log "skip: can't pull from GitHub (offline, or main diverged); will retry next hour"; notify "Auto-publish paused: could not pull from GitHub"; return 1; }
+
+  # Finish any earlier publish whose push failed (network, GitHub outage)
+  if [ "$(git rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)" -gt 0 ]; then
+    if git push --quiet; then log "pushed earlier unpublished commit(s) ($(git rev-parse --short HEAD))"; else log "push still failing; will retry next hour"; return 1; fi
+  fi
+
+  if ! python3 scripts/sync_pages.py "$dawn" "$chart" >/dev/null; then
+    discard_sync; log "refuse: a design file couldn't be synced (see sync_pages.py error above)"
+    notify "Auto-publish skipped: a page couldn't be synced (see reports/autoship.log)"; return 1
+  fi
   if [ -z "$(git status --porcelain)" ]; then log "no changes"; return 0; fi
 
   # Sanity checks before publishing anything
@@ -50,13 +61,13 @@ run_once() {
   done
   node --check public/ab/track.js || ok=0
   node --test >/dev/null 2>&1 || { log "refuse: tests failed"; ok=0; }
-  if (( ok == 0 )); then git checkout -q -- . && git clean -qfd public/variants; notify "Auto-publish skipped: a page failed checks (see reports/autoship.log)"; return 1; fi
+  if (( ok == 0 )); then discard_sync; notify "Auto-publish skipped: a page failed checks (see reports/autoship.log)"; return 1; fi
 
   local changed
   changed=$(git status --porcelain | awk '{print $2}' | sed -E 's#public/variants/([^/]+)/.*#\1#' | sort -u | tr '\n' ' ')
   git add -A
   git commit --quiet -m "Auto-publish page designs: ${changed% }"
-  git push --quiet
+  git push --quiet || { log "committed but push failed; will retry next hour"; notify "Auto-publish: push failed, will retry"; return 1; }
   log "published: ${changed% } ($(git rev-parse --short HEAD))"
   notify "Published new ${changed% } page; live in about a minute"
 }
