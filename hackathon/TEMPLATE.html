@@ -54,6 +54,10 @@
   window.addEventListener('resize', resize);
   resize();
 
+  // Respect people who ask their device for less motion: slow or skip
+  // shakes, flashes and fast camera moves when this is true.
+  var reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
   var state = { mode: 'title', t: 0, last: 0 };
 
   // ---- Audio: created lazily, only from a gesture
