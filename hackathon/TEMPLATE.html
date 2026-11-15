@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="description" content="REPLACE: one-line concept and core mechanic">
+<title>Hackathon NN · Genre · Title</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #111; overflow: hidden;
+    touch-action: none; -webkit-user-select: none; user-select: none;
+    font-family: system-ui, -apple-system, sans-serif; color: #eee; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #err { display: none; position: fixed; inset: 0; background: #300; color: #fff;
+    padding: 16px; white-space: pre-wrap; font: 14px monospace; overflow: auto; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="err"></div>
+<script>
+/*
+  Hackathon skeleton. Replace the REPLACE blocks; keep the plumbing.
+  - Errors show on screen instead of a blank page.
+  - Canvas is sized from the viewport and devicePixelRatio, and resizes.
+  - One pointer handler covers mouse, touch and pen; one key handler covers keyboard.
+  - Audio is created only inside a user gesture (browsers block it otherwise).
+  - The loop starts exactly once and clamps dt so a backgrounded tab cannot explode the physics.
+*/
+(function () {
+  'use strict';
+
+  var errBox = document.getElementById('err');
+  window.addEventListener('error', function (e) {
+    errBox.style.display = 'block';
+    errBox.textContent += (e.message || 'Error') + '\n';
+  });
+
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d');
+  var W = 0, H = 0, DPR = 1;
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  var state = { mode: 'title', t: 0, last: 0 };
+
+  // ---- Audio: created lazily, only from a gesture
+  var audio = null;
+  function ensureAudio() {
+    if (!audio) {
+      try {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        audio = AC ? new AC() : null;
+      } catch (err) {
+        audio = null;
+      }
+    }
+    if (audio && audio.state === 'suspended') audio.resume();
+    return audio;
+  }
+
+  // ---- Input: one path for pointer and keyboard
+  function startGame() {
+    state.mode = 'play';
+    state.t = 0;
+    // REPLACE: reset game state here
+  }
+
+  function onTap(x, y) {
+    ensureAudio();
+    if (state.mode === 'title') { startGame(); return; }
+    // REPLACE: handle a tap in play at (x, y), CSS pixels
+  }
+
+  function onKey(key) {
+    ensureAudio();
+    if (state.mode === 'title' && (key === ' ' || key === 'Enter')) { startGame(); return; }
+    // REPLACE: handle keys in play
+  }
+
+  canvas.addEventListener('pointerdown', function (e) {
+    if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+    onTap(e.clientX, e.clientY);
+  });
+  window.addEventListener('keydown', function (e) { onKey(e.key); });
+
+  // ---- Simulation and drawing
+  function update(dt) {
+    state.t += dt;
+    if (state.mode === 'play') {
+      // REPLACE: advance game state by dt seconds
+    }
+  }
+
+  function drawTitle() {
+    var s = Math.min(W, H);
+    ctx.fillStyle = '#eee';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = Math.round(s / 12) + 'px system-ui, sans-serif';
+    ctx.fillText('REPLACE TITLE', W / 2, H / 2);
+    ctx.font = Math.round(s / 30) + 'px system-ui, sans-serif';
+    ctx.fillText('Tap or press Space to start', W / 2, H / 2 + s / 8);
+  }
+
+  function drawPlay() {
+    // REPLACE: draw the play state
+  }
+
+  function draw() {
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, W, H);
+    if (state.mode === 'title') drawTitle();
+    else drawPlay();
+  }
+
+  // ---- Loop: started once
+  function frame(now) {
+    var dt = state.last ? Math.min((now - state.last) / 1000, 0.05) : 0;
+    state.last = now;
+    update(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
