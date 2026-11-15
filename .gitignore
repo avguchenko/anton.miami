@@ -8,3 +8,5 @@ node_modules/
 # analysis output (local only; contains per-visitor rows)
 reports/
 data/
+# habits tracker data when run locally (npm run habits)
+habits/data/

@@ -43,6 +43,7 @@ async function api(method, path, body) {
 async function load() {
   data = await api('GET', 'state');
   scorer = new Scorer(data);
+  $('logout').hidden = !!data.local;
   showApp();
   render();
 }

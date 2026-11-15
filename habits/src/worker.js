@@ -1,6 +1,7 @@
 // habits.anton.miami: a daily habit tracker.
 //
 //  /            the page (static, from ./public); it shows a login form until signed in
+//               (no sign-in when run locally without a password: `npm run habits`)
 //  /api/login   POST { password } -> session cookie (rate-limited)
 //  /api/logout  POST
 //  /api/state   GET  every habit and every check-off
@@ -66,7 +67,11 @@ export default {
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
 
     const password = env.HABITS_PASSWORD;
-    if (!password) return json({ error: 'HABITS_PASSWORD is not set on the Worker yet.' }, 503);
+    // Local mode (`npm run habits` passes --var HABITS_LOCAL:1): no sign-in, and wrangler dev
+    // only listens on this machine. Never set HABITS_LOCAL on the deployed Worker; with no
+    // password and no local flag it refuses to serve any data.
+    const local = env.HABITS_LOCAL === '1';
+    if (!password && !local) return json({ error: 'HABITS_PASSWORD is not set on the Worker yet.' }, 503);
 
     // State-changing requests must be same-origin JSON (on top of SameSite=Strict).
     if (request.method !== 'GET') {
@@ -84,7 +89,7 @@ export default {
       if (!body || typeof body !== 'object') body = {};
     }
 
-    if (route === 'login' && request.method === 'POST') {
+    if (route === 'login' && request.method === 'POST' && !local) {
       const lockedMs = await db.call('loginLockedFor');
       if (lockedMs > 0) {
         return json({ error: `Too many tries. Wait ${Math.ceil(lockedMs / 60000)} min.` }, 429, { 'retry-after': String(Math.ceil(lockedMs / 1000)) });
@@ -100,11 +105,14 @@ export default {
       return json({ ok: true }, 200, { 'set-cookie': setCookie('', 0, url) });
     }
 
-    if (!(await validSession(password, readCookie(request, COOKIE)))) return json({ error: 'Sign in.' }, 401);
+    if (!local && !(await validSession(password, readCookie(request, COOKIE)))) return json({ error: 'Sign in.' }, 401);
 
     let r;
     let m;
-    if (route === 'state' && request.method === 'GET') r = await db.call('state');
+    if (route === 'state' && request.method === 'GET') {
+      r = await db.call('state');
+      r.body.local = local;
+    }
     else if (route === 'habits' && request.method === 'POST') r = await db.call('add', body);
     else if ((m = route.match(/^habits\/(\d+)$/)) && request.method === 'PATCH') {
       r = await db.call('dir' in body ? 'move' : 'rename', +m[1], body);

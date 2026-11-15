@@ -279,22 +279,31 @@ months) and a heatmap of every day this year.
 - Days before yesterday are locked so old days can't be quietly rewritten; **Unlock past days** opens them.
 - Data lives in one SQLite-backed Durable Object; it syncs across devices when a tab comes back
   into view. Days are the browser's local dates.
-- One password (the `HABITS_PASSWORD` secret), a signed HttpOnly cookie that lasts a year,
-  and 5 wrong tries lock sign-in for 15 minutes. Changing the password signs every device out.
-  The site is `noindex`.
+- Deployed, it is behind one password (the `HABITS_PASSWORD` secret): a signed HttpOnly cookie that
+  lasts a year, and 5 wrong tries lock sign-in for 15 minutes. Changing the password signs every
+  device out. The site is `noindex`.
 
-**One-time setup**
-1. Deploy it: Workers & Pages → Create → **Import a repository** → `avguchenko/anton.miami` again,
+**Run it locally (current setup).** Nothing is deployed; it only exists on the Mac:
+
+```
+npm run habits          # then open http://localhost:8788
+```
+
+No password in this mode, and it listens only on this machine (127.0.0.1). The data lives in
+`habits/data/` (git-ignored), so copy that folder to back it up. It is there while the
+command is running; stop it with Ctrl-C.
+
+**Putting it online later** (to use it from the phone). Merging this into `main` deploys nothing
+by itself; only these steps do:
+1. Workers & Pages → Create → **Import a repository** → `avguchenko/anton.miami` again,
    Worker name `anton-miami-habits`, production branch `main`, deploy command
-   `npx wrangler deploy -c habits/wrangler.jsonc`. Optionally set *Build watch paths* to `habits/*`
-   (and `src/*`, `public/*` on the front-page Worker) so each only rebuilds for its own changes.
-   Or from the Mac: `npm run habits:deploy`.
-2. Set the password: `npx wrangler secret put HABITS_PASSWORD -c habits/wrangler.jsonc`
-   (or Worker → Settings → Variables and Secrets → add a **Secret**).
-3. `wrangler.jsonc` claims `habits.anton.miami` as a custom domain on deploy, which creates the DNS record.
-4. On your phone, open it and *Add to Home Screen*.
-
-Local: put `HABITS_PASSWORD=…` in `habits/.dev.vars`, then `npm run habits:dev`.
+   `npx wrangler deploy -c habits/wrangler.jsonc`. Or from the Mac: `npm run habits:deploy`.
+2. Set the password: `npx wrangler secret put HABITS_PASSWORD -c habits/wrangler.jsonc`.
+   Without it the deployed Worker serves no data at all.
+3. Optional, stronger: put **Cloudflare Access** (Zero Trust, free) in front of
+   `habits.anton.miami`, allowing only your email. It adds a Google or one-time-code login
+   without any accounts in the app.
+4. The local data doesn't move over by itself; ask for an export/import when you get there.
 
 ## License
 
