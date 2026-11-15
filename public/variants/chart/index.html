@@ -150,6 +150,10 @@ const CFG = {
   ZOOM: [0.4, 8],                       // widest and closest view, relative to the opening frame
   ZOOM_RATE: 0.0023,                    // zoom per wheel pixel (pinch gestures use a faster rate)
   ZOOM_EASE: 0.17,                      // seconds; how softly the view follows the wheel
+  TOUCH_OPEN_SCALE: 26,                 // on touch screens the chart opens zoomed in to this many px per minute of longitude…
+  TOUCH_OPEN_ZOOM: [1.6, 2.4],          // …within these limits, so there is a sheet many screens wide to explore
+  GLIDE: 0.32,                          // seconds; how long a flicked chart keeps sliding
+  DRIFT: 20,                            // px/s; on touch, the idle chart drifts under the lens at up to this speed
 
   // Field and contours
   CELL: 9,                              // marching-squares cell size in CSS px (grows on huge screens)
@@ -310,6 +314,11 @@ const ptr = { tx: 0, ty: 0, sx: 0, sy: 0, vx: 0, vy: 0, spd: 0, stepX: 0, stepY:
 const ghost = { on: true, t: 0, blend: 1, ax: 0, ay: 0 };
 const lens = { cur: 0, prev: 0, mix: 1, alpha: 0, r: CFG.LENS_RADIUS, echo: null, auto: 0 };
 const pinch = { on: false, d: 0, mx: 0, my: 0, pts: new Map() };
+// navigation. With a mouse the lens follows the cursor. On touch the lens is a reticle fixed at the centre and the
+// chart is dragged beneath it, so sailing the chart is what leaves a wake.
+const nav = { touch: matchMedia('(pointer: coarse)').matches, homeZ: 1, homeX: 0, homeY: 0, drag: false, glide: false,
+              wax: 0, way: 0, lx: 0, ly: 0, lt: 0, vx: 0, vy: 0, dvx: 0, dvy: 0, sgx: 1, sgy: 1 };
+const lensHomeX = () => W / 2, lensHomeY = () => H * 0.54;
 let lensCanvas, lensCtx;
 
 // chart furniture and things dropped on it
@@ -397,24 +406,41 @@ function zoomAt(sx, sy, factor) {
   view.zt = clamp(view.zt * factor, CFG.ZOOM[0], CFG.ZOOM[1]);
   view.ax = sx; view.ay = sy; view.wax = toWX(sx); view.way = toWY(sy); view.anchored = true;
 }
-function goHome() { view.homing = true; view.anchored = false; view.zt = 1; }
+function goHome() { view.homing = true; view.anchored = false; nav.glide = false; view.zt = nav.homeZ; }
 
 function updateView(dt) {
   const z0 = view.z, tx0 = view.tx, ty0 = view.ty;
+  let drifting = false, tvx = 0, tvy = 0;
   if (view.homing) {
-    view.z = Math.exp(damp(Math.log(view.z), 0, 0.45, dt)); view.cx = damp(view.cx, W / 2, 0.45, dt); view.cy = damp(view.cy, H / 2, 0.45, dt);
-    if (Math.abs(view.z - 1) < 0.0015 && Math.hypot(view.cx - W / 2, view.cy - H / 2) < 0.3) { view.z = 1; view.cx = W / 2; view.cy = H / 2; view.homing = false; }
+    const lh = Math.log(nav.homeZ);
+    view.z = Math.exp(damp(Math.log(view.z), lh, 0.45, dt)); view.cx = damp(view.cx, nav.homeX, 0.45, dt); view.cy = damp(view.cy, nav.homeY, 0.45, dt);
+    if (Math.abs(Math.log(view.z) - lh) < 0.0015 && Math.hypot(view.cx - nav.homeX, view.cy - nav.homeY) < 0.3) { view.z = nav.homeZ; view.cx = nav.homeX; view.cy = nav.homeY; view.homing = false; }
   } else {
     const lt = Math.log(view.zt), lz = damp(Math.log(view.z), lt, pinch.on ? 0.05 : CFG.ZOOM_EASE, dt), settled = Math.abs(lz - lt) < 0.0006;
     view.z = settled ? view.zt : Math.exp(lz);
-    if (view.anchored) {                                    // keep the anchored world point under the cursor
+    if (view.anchored) {                                    // keep the anchored world point under the cursor or finger
       view.cx = view.wax + (W / 2 - view.ax) / view.z; view.cy = view.way + (H / 2 - view.ay) / view.z;
-      if (settled && !pinch.on) view.anchored = false;
+      if (settled && !pinch.on && !nav.drag) view.anchored = false;
+    } else if (nav.glide) {                                 // a flicked chart slides on and settles
+      view.cx -= nav.vx / view.z * dt; view.cy -= nav.vy / view.z * dt;
+      const k = Math.exp(-dt / CFG.GLIDE); nav.vx *= k; nav.vy *= k;
+      if (Math.hypot(nav.vx, nav.vy) < 4) nav.glide = false;
+    } else if (ghost.on && nav.touch) {                     // idle on touch: the ghost takes the helm and the chart drifts under the lens,
+      const w = TAU / CFG.GHOST_PERIOD, b = ghost.blend * ghost.blend * (3 - 2 * ghost.blend), v = CFG.DRIFT * (REDUCED ? 0.4 : 1);
+      tvx = v * 0.6 * Math.cos(w * ghost.t + 0.9) * nav.sgx; tvy = v * Math.cos(w * PHI * ghost.t + 2.2) * nav.sgy;   // on a golden-ratio Lissajous heading
+      nav.dvx = damp(nav.dvx, tvx * b, 1.2, dt); nav.dvy = damp(nav.dvy, tvy * b, 1.2, dt);
+      view.cx += nav.dvx / view.z * dt; view.cy += nav.dvy / view.z * dt; drifting = true;
     }
   }
+  if (!drifting) nav.dvx = nav.dvy = 0;
   // the view may not leave the widest frame, so zooming all the way out always lands on the same sheet
   const mx = (W / 2) * (1 / CFG.ZOOM[0] - 1 / view.z), my = (H / 2) * (1 / CFG.ZOOM[0] - 1 / view.z);
-  view.cx = clamp(view.cx, W / 2 - mx, W / 2 + mx); view.cy = clamp(view.cy, H / 2 - my, H / 2 + my);
+  const cx = clamp(view.cx, W / 2 - mx, W / 2 + mx), cy = clamp(view.cy, H / 2 - my, H / 2 + my);
+  if (drifting) {                                           // at the edge of the sheet the drift turns back
+    if ((cx > view.cx && tvx < 0) || (cx < view.cx && tvx > 0)) nav.sgx = -nav.sgx;
+    if ((cy > view.cy && tvy < 0) || (cy < view.cy && tvy > 0)) nav.sgy = -nav.sgy;
+  } else if (nav.glide) { if (cx !== view.cx) nav.vx = 0; if (cy !== view.cy) nav.vy = 0; }
+  view.cx = cx; view.cy = cy;
   view.tx = W / 2 - view.cx * view.z; view.ty = H / 2 - view.cy * view.z;
   view.moved = view.z !== z0 || view.tx !== tx0 || view.ty !== ty0;
   if (view.moved) { setLOD(); reproject(z0, tx0, ty0); }
@@ -446,7 +472,8 @@ function reproject(z0, tx0, ty0) {
     px[p] = px[p] * s + dX; py[p] = py[p] * s + dY; pvx[p] *= s; pvy[p] *= s;
     for (let m = 0, o = p * K * 2; m < K; m++, o += 2) { phist[o] = phist[o] * s + dX; phist[o + 1] = phist[o + 1] * s + dY; }
   }
-  ptr.stepX = ptr.stepX * s + dX; ptr.stepY = ptr.stepY * s + dY;
+  if (Math.abs(s - 1) > 1e-7) { ptr.stepX = ptr.sx; ptr.stepY = ptr.sy; }      // zooming is not sailing; only a pan moves the lens through the water
+  else { ptr.stepX += dX; ptr.stepY += dY; }
   refreshStatic();
 }
 
@@ -513,8 +540,11 @@ function layout() {
   chart.M = chart.k / (chart.R * Math.cos(chart.phi0));
   chart.sigma = clamp(W * CFG.STREAM_WIDTH, 44, 128);
 
-  // the view opens on the home frame
-  view.z = view.zt = 1; view.cx = W / 2; view.cy = H / 2; view.tx = view.ty = 0; view.anchored = view.homing = view.moved = false;
+  // where the view opens: the whole home frame with a mouse; zoomed in on touch, with the sheet extending well past the screen
+  nav.homeZ = nav.touch ? clamp(CFG.TOUCH_OPEN_SCALE / chart.scale, CFG.TOUCH_OPEN_ZOOM[0], CFG.TOUCH_OPEN_ZOOM[1]) : 1;
+  nav.homeX = nav.touch ? W * 0.56 : W / 2; nav.homeY = H / 2;
+  view.z = view.zt = nav.homeZ; view.cx = nav.homeX; view.cy = nav.homeY; view.tx = W / 2 - view.cx * view.z; view.ty = H / 2 - view.cy * view.z;
+  view.anchored = view.homing = view.moved = nav.drag = nav.glide = false;
   setLOD(); refreshStatic();
 
   // furniture
@@ -637,8 +667,11 @@ function injectWake() {
   // the smoothed cursor moved from (stepX,stepY) to (sx,sy) during this step
   const dx = ptr.sx - ptr.stepX, dy = ptr.sy - ptr.stepY, d = Math.hypot(dx, dy);
   const x0 = ptr.stepX, y0 = ptr.stepY; ptr.stepX = ptr.sx; ptr.stepY = ptr.sy;
+  const v = d / STEP;                         // speed through the water, whether the lens moved or the chart did
+  ptr.spd = damp(ptr.spd, v, 0.12, STEP);
+  if (v > 12) { let a = Math.atan2(dy, dx) - ptr.heading; a = Math.atan2(Math.sin(a), Math.cos(a)); ptr.heading += a * (1 - Math.exp(-STEP / 0.18)); }
   if (d < 0.02 || lens.alpha < 0.05) return;
-  const v = d / STEP, soft = (ghost.on ? 0.75 : 1) * (REDUCED ? 0.6 : 1);
+  const soft = (ghost.on ? 0.75 : 1) * (REDUCED ? 0.6 : 1);
   const slow = Math.exp(-v / 260), fast = smooth(520, 1900, v);
   const n = Math.max(1, Math.ceil(d / (cell * 1.4))), dd = Math.min(d, 40) / n;
   for (let s = 1; s <= n; s++) {
@@ -897,7 +930,7 @@ function applyEgg(e) {
 function stepEggs() {
   for (const e of eggs) {
     const sx = toSX(e.x), sy = toSY(e.y);
-    const near = lens.alpha > 0.3 && Math.hypot(ptr.sx - sx, ptr.sy - sy) < CFG.EGG_TRIGGER && ptr.spd < 420;
+    const near = lens.alpha > 0.3 && Math.hypot(ptr.sx - sx, ptr.sy - sy) < CFG.EGG_TRIGGER * clamp(view.z, 0.45, 1) && ptr.spd < 420;   // a smaller target when zoomed out
     if (near && e.w < 0.002) e.C = Math.round(sampleH(sx, sy) / view.coarse) * view.coarse;
     e.hold = near ? 1.6 : Math.max(0, e.hold - STEP);
     e.w = damp(e.w, e.hold > 0 ? 1 : 0, e.hold > 0 ? 0.75 : 1.5, STEP);
@@ -949,14 +982,20 @@ function ghostPoint(t, o) {                 // on screen: it sails that course w
   o.x = lerp(toSX(o.x), o.x, b); o.y = lerp(toSY(o.y), o.y, b);
 }
 
+function placeLens() { if (nav.touch) arrive(lensHomeX(), lensHomeY()); else { ghostPoint(ghost.t, GP); arrive(GP.x, GP.y); } }
 function arrive(x, y) {                     // the cursor appears somewhere new: leave an echo, fade the lens back in
   if (lens.alpha > 0.05) lens.echo = { x: ptr.sx, y: ptr.sy, a: lens.alpha * 0.5, r: lens.r };
   ptr.tx = ptr.sx = ptr.stepX = x; ptr.ty = ptr.sy = ptr.stepY = y; ptr.vx = ptr.vy = 0; ptr.spd = 0;
   lens.alpha = 0;
 }
-function onInput(x, y, type) {
-  if (ghost.on || !ptr.present || (type === 'touch' && !ptr.down && Math.hypot(x - ptr.sx, y - ptr.sy) > 70)) arrive(x, y);
+function onInput(x, y, type) {              // mouse or pen: the lens goes where the cursor is
+  if (nav.touch || ghost.on || !ptr.present) arrive(x, y);
+  nav.touch = false;
   ptr.tx = x; ptr.ty = y; ptr.present = true; ptr.type = type; ptr.lastInput = performance.now(); ghost.on = false;
+}
+function onTouch() {                        // touch: the lens keeps the centre; fingers move the chart
+  if (!nav.touch) { nav.touch = true; arrive(lensHomeX(), lensHomeY()); }
+  ptr.tx = lensHomeX(); ptr.ty = lensHomeY(); ptr.present = true; ptr.type = 'touch'; ptr.lastInput = performance.now(); ghost.on = false;
 }
 function pinchState() {
   const [a, b] = [...pinch.pts.values()];
@@ -964,33 +1003,56 @@ function pinchState() {
 }
 
 addEventListener('pointermove', e => {
-  if (e.pointerType === 'touch' && pinch.pts.has(e.pointerId)) {
-    pinch.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const x = e.clientX, y = e.clientY, touch = e.pointerType === 'touch';
+  if (touch && pinch.pts.has(e.pointerId)) {
+    pinch.pts.set(e.pointerId, { x, y });
     if (pinch.on && pinch.pts.size === 2) {                   // two fingers: zoom about their midpoint and drag the chart with it
       const s = pinchState();
       view.homing = false; view.wax = toWX(pinch.mx); view.way = toWY(pinch.my); view.ax = s.mx; view.ay = s.my; view.anchored = true;
       view.zt = clamp(view.zt * s.d / pinch.d, CFG.ZOOM[0], CFG.ZOOM[1]);
-      pinch.d = s.d; pinch.mx = s.mx; pinch.my = s.my; ptr.lastInput = performance.now();
+      pinch.d = s.d; pinch.mx = s.mx; pinch.my = s.my; onTouch();
       return;
     }
   }
-  if (e.isPrimary && !pinch.on) onInput(e.clientX, e.clientY, e.pointerType);
+  if (!e.isPrimary || pinch.on) return;
+  if (touch) onTouch(); else onInput(x, y, e.pointerType);
+  if (!ptr.down) return;
+  if (!nav.drag && Math.hypot(x - ptr.downX, y - ptr.downY) > (touch ? 8 : 5)) {      // a press that travels becomes a drag: take hold of the chart
+    nav.drag = true; view.homing = false; view.wax = nav.wax; view.way = nav.way; nav.vx = nav.vy = 0;
+  }
+  if (nav.drag) {
+    view.ax = x; view.ay = y; view.anchored = true;
+    const now = performance.now(), dt = Math.max(4, now - nav.lt) / 1000;             // finger velocity, for the glide on release
+    nav.vx = lerp(nav.vx, (x - nav.lx) / dt, 0.45); nav.vy = lerp(nav.vy, (y - nav.ly) / dt, 0.45);
+    nav.lx = x; nav.ly = y; nav.lt = now;
+  }
 }, { passive: true });
 addEventListener('pointerdown', e => {
   if (e.target.closest && e.target.closest('button, a')) return;
-  if (e.pointerType === 'touch') {
-    pinch.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pinch.pts.size === 2) { const s = pinchState(); pinch.on = true; pinch.d = s.d; pinch.mx = s.mx; pinch.my = s.my; ptr.down = false; return; }
+  const x = e.clientX, y = e.clientY, touch = e.pointerType === 'touch';
+  if (touch) {
+    pinch.pts.set(e.pointerId, { x, y });
+    if (pinch.pts.size === 2) {
+      const s = pinchState(); pinch.on = true; pinch.d = s.d; pinch.mx = s.mx; pinch.my = s.my;
+      ptr.down = nav.drag = nav.glide = false; onTouch(); return;
+    }
   }
   if (!e.isPrimary) return;
-  onInput(e.clientX, e.clientY, e.pointerType);
-  ptr.down = true; ptr.downX = e.clientX; ptr.downY = e.clientY; ptr.downT = performance.now();
+  if (touch) onTouch(); else onInput(x, y, e.pointerType);
+  nav.glide = false; nav.drag = false; nav.wax = toWX(x); nav.way = toWY(y); nav.lx = x; nav.ly = y; nav.lt = performance.now();
+  ptr.down = true; ptr.downX = x; ptr.downY = y; ptr.downT = nav.lt;
 });
 function pointerEnd(e) {
   pinch.pts.delete(e.pointerId);
-  if (pinch.on) { if (pinch.pts.size < 2) pinch.on = false; ptr.down = false; return; }
+  if (pinch.on) { if (pinch.pts.size < 2) { pinch.on = false; view.anchored = false; } ptr.down = false; return; }
   if (!e.isPrimary || !ptr.down) return;
   ptr.down = false; ptr.lastInput = performance.now();
+  if (nav.drag) {                                             // let go of the chart; a flick lets it slide
+    nav.drag = false; view.anchored = false;
+    const sp = Math.hypot(nav.vx, nav.vy);
+    if (e.type === 'pointerup' && performance.now() - nav.lt < 90 && sp > 60) { const k = Math.min(1, 2600 / sp); nav.vx *= k; nav.vy *= k; nav.glide = true; }
+    return;
+  }
   if (e.type === 'pointerup' && Math.hypot(e.clientX - ptr.downX, e.clientY - ptr.downY) < 12 && performance.now() - ptr.downT < 450) dropBuoy(e.clientX, e.clientY);
 }
 addEventListener('pointerup', pointerEnd);
@@ -1019,28 +1081,28 @@ addEventListener('keydown', e => {
 
 function updateInput(dt) {
   const now = performance.now();
-  if (!ghost.on && !ptr.down && !pinch.on && now - ptr.lastInput > CFG.IDLE_AFTER * 1000) {
+  if (!ghost.on && !ptr.down && !pinch.on && !nav.glide && !view.homing && now - ptr.lastInput > CFG.IDLE_AFTER * 1000) {
     ghost.on = true; ghost.blend = 0; ghost.ax = ptr.sx; ghost.ay = ptr.sy; ptr.present = false;
   }
   if (ghost.on) {
     ghost.t += dt; ghost.blend = Math.min(1, ghost.blend + dt / 6);
-    ghostPoint(ghost.t, GP);
-    const b = ghost.blend * ghost.blend * (3 - 2 * ghost.blend);
-    ptr.tx = lerp(ghost.ax, GP.x, b); ptr.ty = lerp(ghost.ay, GP.y, b);
+    if (nav.touch) { ptr.tx = lensHomeX(); ptr.ty = lensHomeY(); }      // on touch the ghost steers the chart instead (see updateView)
+    else {
+      ghostPoint(ghost.t, GP);
+      const b = ghost.blend * ghost.blend * (3 - 2 * ghost.blend);
+      ptr.tx = lerp(ghost.ax, GP.x, b); ptr.ty = lerp(ghost.ay, GP.y, b);
+    }
     lens.auto += dt;
     if (lens.auto > 24) { lens.auto = 0; lens.prev = lens.cur; lens.cur = (lens.cur + 1) % 3; lens.mix = 0; }
   }
   // critically damped spring toward the target, so the vessel never snaps
-  const w = CFG.CURSOR_STIFFNESS * (ghost.on ? 0.35 : 1), n = Math.max(1, Math.ceil(dt / 0.008)), h = dt / n;
+  const w = CFG.CURSOR_STIFFNESS * (ghost.on && !nav.touch ? 0.35 : 1), n = Math.max(1, Math.ceil(dt / 0.008)), h = dt / n;
   for (let i = 0; i < n; i++) {
     ptr.vx += ((ptr.tx - ptr.sx) * w * w - 2 * w * ptr.vx) * h; ptr.vy += ((ptr.ty - ptr.sy) * w * w - 2 * w * ptr.vy) * h;
     ptr.sx += ptr.vx * h; ptr.sy += ptr.vy * h;
   }
-  const sp = Math.hypot(ptr.vx, ptr.vy);
-  ptr.spd = damp(ptr.spd, sp, 0.12, dt);
-  if (sp > 12) { let d = Math.atan2(ptr.vy, ptr.vx) - ptr.heading; d = Math.atan2(Math.sin(d), Math.cos(d)); ptr.heading += d * (1 - Math.exp(-dt / 0.18)); }
 
-  lens.alpha = damp(lens.alpha, ghost.on ? 0.62 : 1, 0.45, dt);
+  lens.alpha = damp(lens.alpha, ghost.on && !nav.touch ? 0.62 : 1, 0.45, dt);
   lens.r = damp(lens.r, chart.lensR * (1.12 - 0.34 * smooth(150, 1500, ptr.spd)), 0.4, dt);
   lens.mix = Math.min(1, lens.mix + dt / 0.9);
   if (lens.echo) { lens.echo.a -= dt * 1.4; if (lens.echo.a <= 0) lens.echo = null; }
@@ -1605,8 +1667,8 @@ function drawLens() {
   spacing(0);
 
   // the vessel
-  if (!ghost.on) {
-    const va = lens.alpha * (ptr.type === 'touch' && !ptr.down ? 0.4 : 1), hl = 5 + 9 * smooth(30, 700, ptr.spd);
+  if (!ghost.on || nav.touch) {
+    const va = lens.alpha, hl = 5 + 9 * smooth(30, 700, ptr.spd);
     ctx.beginPath(); ctx.arc(x, y, 2.6, 0, TAU);
     ctx.moveTo(x + Math.cos(ptr.heading) * 5, y + Math.sin(ptr.heading) * 5); ctx.lineTo(x + Math.cos(ptr.heading) * (5 + hl), y + Math.sin(ptr.heading) * (5 + hl));
     ctx.strokeStyle = rgba(col.accent, 0.95 * va); ctx.lineWidth = LW(1); ctx.stroke();
@@ -1703,7 +1765,7 @@ function stop() { cancelAnimationFrame(raf); raf = 0; }
 document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); else { watchSun(false); start(); } });
 setInterval(() => watchSun(false), 20000);
 let resizeTimer = 0;
-addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { layout(); if (ghost.on) { ghostPoint(ghost.t, GP); arrive(GP.x, GP.y); } }, 140); });
+addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { layout(); if (ghost.on || nav.touch) placeLens(); }, 140); });
 reducedMQ.addEventListener('change', e => { REDUCED = e.matches; initParticles(); });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { measureTitle(); buildVeil(); });
 
@@ -1718,7 +1780,7 @@ function boot(saved) {
   layout();
   if (saved.lens != null) lens.cur = lens.prev = saved.lens % 3;
   if (saved.buoys) for (const b of saved.buoys) buoys.push({ x: b[0] * W, y: b[1] * H, u: b[0], v: b[1], n: 5, next: 2 + rand() * 6, alpha: 0, dead: false, fm: -1 });
-  ghost.t = 7; ghostPoint(ghost.t, GP); arrive(GP.x, GP.y); lens.alpha = 0.62;
+  ghost.t = 7; placeLens(); lens.alpha = nav.touch ? 1 : 0.62;
   // run the sea for a few seconds before the first frame, so the chart opens already alive
   for (let i = 0; i < 200; i++) { updateInput(STEP); step(); }
   if (saved.view) { view.zt = clamp(saved.view[0], CFG.ZOOM[0], CFG.ZOOM[1]); view.ax = W / 2; view.ay = H / 2; view.wax = saved.view[1] * W; view.way = saved.view[2] * H; view.anchored = true; }
