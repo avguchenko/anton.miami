@@ -13,7 +13,7 @@
   'use strict';
 
   // ---- configuration --------------------------------------------------------
-  var POSTHOG_KEY = 'phc_REPLACE_WITH_YOUR_PROJECT_API_KEY';
+  var POSTHOG_KEY = 'phc_ybcUDErwHCceLdNViW4esrhSzpc8boezDKtQsRedDa64';
   var POSTHOG_UI = 'https://us.posthog.com';   // use https://eu.posthog.com for an EU project
   var RECORD_CANVAS = true;   // session replay shows the canvas itself (low fps); false = cursor over blank
   var CANVAS_FPS = 2;

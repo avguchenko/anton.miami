@@ -118,7 +118,7 @@
   <div class="read">
     <p class="live" id="r1">25.79070, -80.13000</p>
     <p class="live" id="r2">RANGE 0.00 km   η +0.00 m</p>
-    <p class="hint" id="hint">Move to draw a wake. Click to drop a stone. Drag to look around. Paste coordinates to stand somewhere else.</p>
+    <p class="hint" id="hint">Move: wake · Click: stone · Drag: look around · Scroll: zoom · Paste coordinates: travel</p>
   </div>
 
   <div class="math">
@@ -176,7 +176,7 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
   const toDays = ms => ms / 864e5 - 0.5 + 2440588 - 2451545;       // days since J2000
   const eqRA = (l, b) => Math.atan2(Math.sin(l) * Math.cos(OBL) - Math.tan(b) * Math.sin(OBL), Math.cos(l));
   const eqDec = (l, b) => Math.asin(Math.sin(b) * Math.cos(OBL) + Math.cos(b) * Math.sin(OBL) * Math.sin(l));
-  const sidereal = d => RAD * (280.16 + 360.9856235 * d) - LW;
+  const sidereal = d => RAD * (280.46061837 + 360.98564736629 * d) - LW;       // local mean sidereal time
   function horiz(ha, dec) {                 // hour angle, declination -> altitude, azimuth from north
     const alt = Math.asin(Math.sin(PHI) * Math.sin(dec) + Math.cos(PHI) * Math.cos(dec) * Math.cos(ha));
     const az = Math.atan2(Math.sin(ha), Math.cos(ha) * Math.sin(PHI) - Math.tan(dec) * Math.cos(PHI)) + Math.PI;
@@ -185,15 +185,68 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
   function sunEq(d) {
     const M = RAD * (357.5291 + 0.98560028 * d);
     const C = RAD * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
-    const L = M + C + RAD * 102.9372 + Math.PI;
+    const L = M + C + RAD * (102.9372 + 0.0000471 * d) + Math.PI;     // the perihelion drifts against the equinox of date
     return { ra: eqRA(L, 0), dec: eqDec(L, 0) };
   }
-  function moonEq(d) {
+  function moonEq(d) {                       // the main terms of the lunar theory: good to a few tenths of a degree
     const L = RAD * (218.316 + 13.176396 * d), M = RAD * (134.963 + 13.064993 * d), F = RAD * (93.272 + 13.229350 * d);
-    const l = L + RAD * 6.289 * Math.sin(M), b = RAD * 5.128 * Math.sin(F);
-    return { ra: eqRA(l, b), dec: eqDec(l, b), dist: 385001 - 20905 * Math.cos(M) };
+    const D = RAD * (297.850 + 12.190749 * d), Ms = RAD * (357.5291 + 0.98560028 * d), S = Math.sin, C = Math.cos;
+    const l = L + RAD * (6.289 * S(M) + 1.274 * S(2 * D - M) + 0.658 * S(2 * D) + 0.214 * S(2 * M) - 0.186 * S(Ms) - 0.114 * S(2 * F));
+    const b = RAD * (5.128 * S(F) + 0.280 * S(M + F) + 0.277 * S(M - F) + 0.173 * S(2 * D - F) + 0.055 * S(2 * D + F - M) + 0.046 * S(2 * D - F - M) + 0.033 * S(2 * D + F));
+    return { ra: eqRA(l, b), dec: eqDec(l, b), dist: 385001 - 20905 * C(M) - 3699 * C(2 * D - M) - 2956 * C(2 * D) - 570 * C(2 * M) };
   }
+  const sunAt = d => { const s = sunEq(d); return horiz(sidereal(d) - s.ra, s.dec); };
+  const moonAt = d => {
+    const m = moonEq(d), h = horiz(sidereal(d) - m.ra, m.dec);
+    h.alt -= Math.asin(6371 / m.dist) * Math.cos(h.alt);            // seen from the surface, not the Earth's centre
+    return h;
+  };
+  // Minutes until a body next climbs over the horizon, scanning the next 26 hours in three-minute steps.
+  function nextRise(at, d) {
+    const h0 = -0.6 * RAD; let prev = at(d).alt;
+    for (let k = 1; k <= 520; k++) {
+      const a = at(d + k * 3 / 1440).alt;
+      if (prev < h0 && a >= h0) return (k - 1 + (h0 - prev) / (a - prev)) * 3;
+      prev = a;
+    }
+    return null;
+  }
+  const PRECESSION = 1.396971;              // degrees of ecliptic longitude per century
   const vec = o => [Math.cos(o.alt) * Math.sin(o.az), Math.cos(o.alt) * Math.cos(o.az), Math.sin(o.alt)];  // east, north, up
+
+  // The planets, from JPL's approximate Keplerian elements (J2000 values and change per century):
+  // semi-major axis (au), eccentricity, inclination, mean longitude, longitude of perihelion, longitude of the node.
+  const EARTH = [[1.00000261, 0.01671123, -0.00001531, 100.46457166, 102.93768193, 0], [0.00000562, -0.00004392, -0.01294668, 35999.37244981, 0.32327364, 0]];
+  const planets = [
+    ['Mercury', [0.38709927, 0.20563593, 7.00497902, 252.25032350, 77.45779628, 48.33076593], [0.00000037, 0.00001906, -0.00594749, 149472.67411175, 0.16047689, -0.12534081], [226, 208, 196], a => -0.42 + 0.0380 * a - 0.000273 * a * a + 0.000002 * a * a * a],
+    ['Venus', [0.72333566, 0.00677672, 3.39467605, 181.97909950, 131.60246718, 76.67984255], [0.00000390, -0.00004107, -0.00078890, 58517.81538729, 0.00268329, -0.27769418], [255, 246, 220], a => -4.40 + 0.0009 * a + 0.000239 * a * a - 0.00000065 * a * a * a],
+    ['Mars', [1.52371034, 0.09339410, 1.84969142, -4.55343205, -23.94362959, 49.55953891], [0.00001847, 0.00007882, -0.00813131, 19140.30268499, 0.44441088, -0.29257343], [255, 150, 110], a => -1.52 + 0.016 * a],
+    ['Jupiter', [5.20288700, 0.04838624, 1.30439695, 34.39644051, 14.72847983, 100.47390909], [-0.00011607, -0.00013253, -0.00183714, 3034.74612775, 0.21252668, 0.20469106], [255, 232, 196], a => -9.40 + 0.005 * a],
+    ['Saturn', [9.53667594, 0.05386179, 2.48599187, 49.95424423, 92.59887831, 113.66242448], [-0.00125060, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794], [246, 224, 170], a => -8.88],
+    ['Uranus', [19.18916464, 0.04725744, 0.77263783, 313.23810451, 170.95427630, 74.01692503], [-0.00196176, -0.00004397, -0.00242939, 428.48202785, 0.40805281, 0.04240589], [170, 236, 236], a => -7.19],
+    ['Neptune', [30.06992276, 0.00859048, 1.77004347, -55.12002969, 44.96476227, 131.78422574], [0.00026291, 0.00005105, 0.00035372, 218.45945325, -0.32241464, -0.05086802], [130, 160, 255], a => -6.87]
+  ].map(([name, el, rate, col, magFn]) => ({ name, el, rate, col, magFn, v: [0, 0, -1], alt: -1, az: 0, mag: 9 }));
+  function helio(el, rate, T) {              // heliocentric position in the J2000 ecliptic, in au
+    const a = el[0] + rate[0] * T, e = el[1] + rate[1] * T, I = (el[2] + rate[2] * T) * RAD;
+    const L = (el[3] + rate[3] * T) * RAD, wb = (el[4] + rate[4] * T) * RAD, Om = (el[5] + rate[5] * T) * RAD, w = wb - Om;
+    const M = wrapPi(L - wb); let E = M + e * Math.sin(M);
+    for (let k = 0; k < 6; k++) E -= (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));        // Kepler's equation
+    const xp = a * (Math.cos(E) - e), yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
+    const cw = Math.cos(w), sw = Math.sin(w), cO = Math.cos(Om), sO = Math.sin(Om), cI = Math.cos(I), sI = Math.sin(I);
+    return [(cw * cO - sw * sO * cI) * xp - (sw * cO + cw * sO * cI) * yp, (cw * sO + sw * cO * cI) * xp + (cw * cO * cI - sw * sO) * yp, sw * sI * xp + cw * sI * yp];
+  }
+  function placePlanets(d, T) {
+    const C = d / 36525, e = helio(EARTH[0], EARTH[1], C), R = Math.hypot(e[0], e[1], e[2]), eps = 23.43928 * RAD;
+    for (const p of planets) {
+      const h = helio(p.el, p.rate, C), pr = PRECESSION * C * RAD, gx0 = h[0] - e[0], gy0 = h[1] - e[1], gz = h[2] - e[2];
+      const gx = gx0 * Math.cos(pr) - gy0 * Math.sin(pr), gy = gx0 * Math.sin(pr) + gy0 * Math.cos(pr);     // J2000 -> equinox of date
+      const r = Math.hypot(h[0], h[1], h[2]), dist = Math.hypot(gx, gy, gz);
+      const ye = gy * Math.cos(eps) - gz * Math.sin(eps), ze = gy * Math.sin(eps) + gz * Math.cos(eps);
+      const hz = horiz(T - Math.atan2(ye, gx), Math.asin(ze / dist));
+      const phase = Math.acos(clamp((r * r + dist * dist - R * R) / (2 * r * dist), -1, 1)) / RAD;       // sun-planet-earth angle
+      p.alt = hz.alt; p.az = hz.az; p.v = vec(hz); p.mag = p.magFn(phase) + 5 * Math.log10(r * dist);
+    }
+  }
 
   // The real sky: every star to magnitude 6.5 (about what the eye sees from a dark beach), packed six
   // bytes each (right ascension, declination, magnitude, colour index) and sorted brightest first.
@@ -222,6 +275,17 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
     }
     return { name: name.toUpperCase(), n, eq, hor: new Float32Array(n * 3), scr: new Float32Array(n * 2), runs, glow: 0 };
   });
+  // The catalogue is for the year 2000; turn it about the pole of the ecliptic to today's equinox, once.
+  {
+    const pr = PRECESSION * toDays(Date.now()) / 36525 * RAD, cp = Math.cos(pr), sp = Math.sin(pr), ce = Math.cos(OBL), se = Math.sin(OBL);
+    const precess = (eq, n) => {
+      for (let i = 0; i < n * 3; i += 3) {
+        const x = eq[i], y = eq[i + 1] * ce + eq[i + 2] * se, z = eq[i + 2] * ce - eq[i + 1] * se, x2 = x * cp - y * sp, y2 = x * sp + y * cp;
+        eq[i] = x2; eq[i + 1] = y2 * ce - z * se; eq[i + 2] = y2 * se + z * ce;
+      }
+    };
+    precess(sEq, NS); for (const c of cons) precess(c.eq, c.n);
+  }
   // Equatorial -> local horizontal (east, north, up) is one rotation by sidereal time and latitude: no trig per star.
   function toHorizon(eq, hor, n, T) {
     const cL = Math.cos(T), sL = Math.sin(T), cp = Math.cos(PHI), sp = Math.sin(PHI);
@@ -256,6 +320,7 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
   }
 
   let sun = { alt: 0, az: 0, v: [0, 1, 0] }, moon = { alt: 0, az: 0, v: [0, 1, 0], frac: 0.5, phase: 0.25 }, pal = palette(0), lastAlm = -1e9;
+  let riseAt = 0, sunRise = null, moonRise = null;   // minutes to the next rise, as of riseAt
   const PHASES = ['new moon', 'waxing crescent', 'first quarter', 'waxing gibbous', 'full moon', 'waning gibbous', 'last quarter', 'waning crescent'];
   const phaseName = p => p < .03 || p > .97 ? PHASES[0] : p < .22 ? PHASES[1] : p < .28 ? PHASES[2] : p < .47 ? PHASES[3] : p < .53 ? PHASES[4] : p < .72 ? PHASES[5] : p < .78 ? PHASES[6] : PHASES[7];
 
@@ -263,13 +328,14 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
   function almanac() {
     const ms = Date.now(), d = toDays(ms), T = sidereal(d);
     const s = sunEq(d), m = moonEq(d);
-    sun = horiz(T - s.ra, s.dec); sun.v = vec(sun);
-    const mh = horiz(T - m.ra, m.dec);
-    mh.alt -= Math.asin(6371 / m.dist) * Math.cos(mh.alt);          // seen from the surface, not the Earth's centre
+    sun = sunAt(d); sun.v = vec(sun);
+    const mh = moonAt(d);
+    if (ms - riseAt > 30000) { riseAt = ms; sunRise = nextRise(sunAt, d); moonRise = nextRise(moonAt, d); }
     const el = Math.acos(Math.sin(s.dec) * Math.sin(m.dec) + Math.cos(s.dec) * Math.cos(m.dec) * Math.cos(s.ra - m.ra));
     const inc = Math.atan2(149598000 * Math.sin(el), m.dist - 149598000 * Math.cos(el));
     const ang = Math.atan2(Math.cos(s.dec) * Math.sin(s.ra - m.ra), Math.sin(s.dec) * Math.cos(m.dec) - Math.cos(s.dec) * Math.sin(m.dec) * Math.cos(s.ra - m.ra));
     moon = mh; moon.v = vec(mh); moon.frac = (1 + Math.cos(inc)) / 2; moon.phase = 0.5 + 0.5 * inc * (ang < 0 ? -1 : 1) / Math.PI;
+    placePlanets(d, T);
     toHorizon(sEq, sHor, NS, T);
     for (const c of cons) toHorizon(c.eq, c.hor, c.n, T);
     pal = palette(sun.alt / RAD);
@@ -337,10 +403,10 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
 
   /* ================= camera ================= */
   const NZ = 100;
-  // The graticule in the water is a real one: a parallel every 0.0005° of latitude (about 56 m) and a
-  // meridian every 0.0005° of longitude, widened toward the poles so the lines never crowd. Lines sit on
-  // round values so each can carry its coordinate.
-  const GSTEP = 0.0005;
+  // The graticule in the water is a real one: at normal zoom a parallel every 0.0005° of latitude (about 56 m)
+  // and a meridian every 0.0005° of longitude, widened toward the poles so the lines never crowd; the step
+  // changes with zoom. Lines sit on round values so each can carry its coordinate.
+  let GSTEP = 0.0005;
   let SE, SN, OFF_E, OFF_N, LON_I0, LAT_I0, LON_STEP;
   function setGrid() {
     const mLon = 111320 * Math.cos(PHI);
@@ -351,7 +417,9 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
     LAT_I0 = Math.ceil(LAT0 / GSTEP - 1e-9); OFF_N = (LAT_I0 * GSTEP - LAT0) * 111320 / M_PER_UNIT;
   }
   setGrid();
-  let W, H, dpr, f, cx, cyP, NX, pMin, pMax, pSea, seaOn = true;
+  const NXMAX = 320, ZMIN = 0.6, ZMAX = 8;
+  let W, H, dpr, f, f0, cx, cyP, NX = 48, pMin, pMax, pSea, seaOn = true;
+  let zoom = 1, tZoom = 1, zoomAt = null;     // scroll zoom: a change of focal length, eased, anchored on the pointer
   let psi = 90 * RAD, phi = 0, tPsi = psi, tPhi = 0;      // heading (clockwise from north) and pitch, with eased targets
   let cpsi = 0, spsi = 1, cphi = 1, sphi = 0, hY = 0, uMax = 1, du = 0.01, zNear = 1;
   let us, lnS, aIdx, AX, AY, BX, BY, yw, zs = new Float32Array(NZ);
@@ -363,19 +431,33 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
     if (W * H * dpr * dpr > 7e6) dpr = Math.sqrt(7e6 / (W * H));
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    f = Math.min(H, W * 0.8); cx = W / 2; cyP = Math.round(H * 0.4);
-    // Pitch runs from the horizon near the top of the screen (looking down at the water)
-    // up to 68°, where the top of the screen reaches the zenith and the sea has dropped out of view.
-    pMin = Math.atan((0.16 * H - cyP) / f); pMax = 68 * RAD;
-    pSea = Math.atan((0.86 * H - cyP) / f);   // the highest pitch that still shows a strip of sea
-    tPhi = clamp(tPhi, pMin, pMax);
-    NX = clamp(Math.round(2 * ((W / 2) / f * 1.08) / (DV / 2.5)), 48, 260);
-    us = new Float32Array(NX); lnS = new Float32Array(NX); aIdx = new Float32Array(NX); yw = new Float32Array(NX);
-    AX = new Float32Array(NX); AY = new Float32Array(NX); BX = new Float32Array(NX); BY = new Float32Array(NX);
+    f0 = Math.min(H, W * 0.8); f = f0 * zoom; cx = W / 2; cyP = Math.round(H * 0.4);
+    us = new Float32Array(NXMAX); lnS = new Float32Array(NXMAX); aIdx = new Float32Array(NXMAX); yw = new Float32Array(NXMAX);
+    AX = new Float32Array(NXMAX); AY = new Float32Array(NXMAX); BX = new Float32Array(NXMAX); BY = new Float32Array(NXMAX);
+    setLimits();
     lastG = null;
   }
 
+  // Pitch runs from looking down at the water (further down once zoomed in) up to where the top of the
+  // screen reaches the zenith.
+  function setLimits() {
+    pMin = Math.atan((0.16 * H - cyP) / f) - 25 * RAD * clamp((zoom - 1) / 2, 0, 1);
+    pMax = Math.PI / 2 - Math.atan(cyP / f) - 0.01;
+    pSea = Math.atan((0.86 * H - cyP) / f);   // the highest pitch that still shows a strip of sea
+    tPhi = clamp(tPhi, pMin, pMax);
+  }
   function setCamera() {
+    if (zoom !== tZoom) {
+      const fOld = f;
+      zoom += (tZoom - zoom) * 0.2; if (Math.abs(tZoom - zoom) < 1e-4) zoom = tZoom;
+      f = f0 * zoom;
+      if (zoomAt) {                           // keep whatever is under the pointer under the pointer
+        const dx = zoomAt.x - cx, dy = zoomAt.y - cyP;
+        const dPsi = Math.atan(dx / fOld) - Math.atan(dx / f), dPhi = Math.atan(dy / f) - Math.atan(dy / fOld);
+        psi += dPsi; tPsi += dPsi; phi += dPhi; tPhi += dPhi;
+      }
+      setLimits(); phi = clamp(phi, pMin, pMax);
+    }
     psi += (tPsi - psi) * 0.2; phi += (tPhi - phi) * 0.2;
     cpsi = Math.cos(psi); spsi = Math.sin(psi); cphi = Math.cos(phi); sphi = Math.sin(phi);
     hY = cyP + f * sphi / cphi;
@@ -387,7 +469,14 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
     zNear = (cphi + q * sphi) / (q * cphi - sphi);
     for (let j = 0; j < NZ; j++) zs[j] = zNear * Math.exp(j * DV);
     uMax = (W / 2) / f * 1.08 * (cphi + Math.max(0, -sphi) / zNear);
+    NX = clamp(Math.round(2 * uMax / (DV / 2.5)), 48, NXMAX);
     du = 2 * uMax / (NX - 1);
+    // The graticule's step follows the magnification of the nearest water, so there are always a few lines on screen.
+    const px = f / (zNear * cphi - sphi) * 111320 / M_PER_UNIT, cur0 = GSTEP * px;
+    if (cur0 < 120 || cur0 > 560) {
+      let g = 0.05; for (const c of [0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05]) if (c * px >= 170) { g = c; break; }
+      if (g !== GSTEP) { GSTEP = g; setGrid(); }
+    }
     for (let i = 0; i < NX; i++) {
       const u = -uMax + i * du;
       us[i] = u; aIdx[i] = Math.atan(u) / DTH; lnS[i] = 0.5 * Math.log(1 + u * u) / DV;
@@ -412,14 +501,34 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
   const ptr = { x: 0, y: 0, on: false, t: -1e9 };
   let lastInput = -1e9, lastG = null, drag = null, idleG = null;
   function local(e) { const b = cv.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; }
+  cv.addEventListener('wheel', e => {
+    e.preventDefault();
+    const [x, y] = local(e), dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    tZoom = clamp(tZoom * Math.exp(-dy * 0.0015), ZMIN, ZMAX); zoomAt = { x, y };
+    lastG = null; lastInput = performance.now();
+  }, { passive: false });
+  const fingers = new Map(); let pinch = 0;   // two fingers pinch to zoom
+  const spread = () => { const [a, b] = [...fingers.values()]; return Math.hypot(a.x - b.x, a.y - b.y) || 1; };
   cv.addEventListener('pointerdown', e => {
     const [x, y] = local(e);
+    if (e.pointerType === 'touch') {
+      fingers.set(e.pointerId, { x, y });
+      if (fingers.size === 2) { pinch = spread(); drag = null; return; }
+    }
     try { cv.setPointerCapture(e.pointerId); } catch (err) {}
     drag = { x, y, moved: 0 };
     ptr.x = x; ptr.y = y; ptr.on = true; ptr.t = lastInput = performance.now();
   });
   cv.addEventListener('pointermove', e => {
     const [x, y] = local(e), now = performance.now();
+    if (fingers.has(e.pointerId)) {
+      fingers.set(e.pointerId, { x, y });
+      if (fingers.size === 2 && pinch) {
+        const d = spread(), [a, b] = [...fingers.values()];
+        tZoom = clamp(tZoom * d / pinch, ZMIN, ZMAX); pinch = d; zoomAt = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        lastInput = now; return;
+      }
+    }
     if (drag) {
       const dx = x - drag.x, dy = y - drag.y;
       drag.moved += Math.abs(dx) + Math.abs(dy); drag.x = x; drag.y = y;
@@ -441,6 +550,7 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
     lastG = g;
   });
   function release(e, drop) {
+    fingers.delete(e.pointerId); if (fingers.size < 2) pinch = 0;
     if (drag && drop && drag.moved <= 4) {
       const g = unproject(drag.x, drag.y);
       if (!g.sky) { splat(g.gi, g.gj, 1.4, 1.7); lastG = g; }
@@ -456,10 +566,17 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
     const k = e.key;
     if (k === 'ArrowLeft') tPsi -= 4 * RAD; else if (k === 'ArrowRight') tPsi += 4 * RAD;
     else if (k === 'ArrowUp') tPhi = clamp(tPhi + 3 * RAD, pMin, pMax); else if (k === 'ArrowDown') tPhi = clamp(tPhi - 3 * RAD, pMin, pMax);
+    else if (k === '0') { tZoom = 1; zoomAt = null; }
     else return;
     e.preventDefault(); lastG = null; lastInput = performance.now();
   });
   window.addEventListener('resize', resize);
+
+  // Divisions for a degree scale at a given magnification: [labelled step, tick step], labels at least ~80 px apart.
+  function scaleSteps(pxPerDeg) {
+    for (const st of [[1, 0.2], [2, 0.5], [5, 1], [10, 1], [30, 5]]) if (st[0] * pxPerDeg >= 80) return st;
+    return [90, 10];
+  }
 
   /* ================= sky ================= */
   const bodies = [];                          // sun and moon as seen this frame, for the glitter on the water
@@ -484,7 +601,8 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
 
     // Stars, where they are over Miami right now. As the sky darkens the limiting magnitude
     // deepens, so the bright ones come out first, the way they do.
-    const lim = -2 + 8.6 * Math.pow(pal.star, 2.5);
+    const lim = -5 + 11.6 * Math.pow(pal.star, 1.2);
+    const zl = Math.log2(zoom), zBright = clamp(Math.pow(zoom, 0.35), 0.8, 1.8), zSize = clamp(Math.pow(zoom, 0.25), 0.88, 1.6);      // zoomed in, stars gain a little light and size
     let label = null, lastCol = -1;
     for (let i = 0; i < NS; i++) {
       const mag = sMag[i]; if (mag >= lim) break;
@@ -492,12 +610,12 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
       const E = sHor[k], N = sHor[k + 1], Z = E * spsi + N * cpsi, Zc = U * sphi + Z * cphi; if (Zc < 0.08) continue;
       const x = cx + f * (E * cpsi - N * spsi) / Zc; if (x < -4 || x > W + 4) continue;
       const y = cyP - f * (U * cphi - Z * sphi) / Zc; if (y < -4 || y > hY + 2) continue;
-      let a = sAlpha[i] * Math.min(1, (lim - mag) / 1.5) * Math.min(1, U * 7);
+      let a = Math.min(1, sAlpha[i] * zBright) * Math.min(1, (lim - mag) / 1.5) * Math.min(1, U * 7);
       if (mag < 2.5) a *= 1 - 0.3 * (1 - U) * (0.5 + 0.5 * Math.sin(t * 3 + i));      // the bright ones twinkle, more so near the horizon
       if (a < 0.03) continue;
       if (sCol[i] !== lastCol) ctx.fillStyle = STAR_COLS[lastCol = sCol[i]];
       ctx.globalAlpha = a;
-      const sz = sSize[i];
+      const sz = sSize[i] * zSize;
       if (sz > 2) {
         ctx.beginPath(); ctx.arc(x, y, sz / 2, 0, TAU); ctx.fill();
         if (sz > 2.6) { ctx.globalAlpha = a * 0.14; ctx.beginPath(); ctx.arc(x, y, sz * 1.6, 0, TAU); ctx.fill(); }   // a soft halo on the brightest
@@ -505,7 +623,26 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
     }
     ctx.globalAlpha = 1;
 
+    // Planets. Zooming in gathers light the way binoculars do, which is what brings Neptune out.
+    const limP = lim + 2 * Math.max(0, zl), marks = [];
+    ctx.font = `400 10px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for (const p of planets) {
+      if (p.mag >= limP || p.v[2] < 0.004) continue;
+      const q = proj(p.v); if (!q || q[0] < -20 || q[0] > W + 20 || q[1] < -20 || q[1] > hY + 2) continue;
+      const a = Math.min(1, (limP - p.mag) / 1.5) * Math.min(1, p.v[2] * 7); if (a < 0.03) continue;
+      const sz = clamp(0.7 + 5 * Math.pow(10, -0.16 * (p.mag + 1.46)), 2.6, 6.5) * zSize;
+      ctx.fillStyle = rgb(p.col);
+      ctx.globalAlpha = a * 0.16; ctx.beginPath(); ctx.arc(q[0], q[1], sz * 1.8, 0, TAU); ctx.fill();
+      ctx.globalAlpha = a; ctx.beginPath(); ctx.arc(q[0], q[1], sz / 2, 0, TAU); ctx.fill();
+      if (p.name === 'Saturn' && zoom > 2.5) { ctx.strokeStyle = rgb(p.col); ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(q[0], q[1], sz * 1.25, sz * 0.4, -0.35, 0, TAU); ctx.stroke(); }
+      ctx.globalAlpha = 0.85 * a; ctx.fillText(p.name, q[0], q[1] + sz / 2 + 6);
+      marks.push([q[0] - 30, q[1] - 8, q[0] + 30, q[1] + sz / 2 + 20]);
+    }
+    ctx.globalAlpha = 1;
+
     // Constellations: the figure nearest the pointer lights up, then fades as you move on.
+    // Zoomed out, the page becomes an atlas and every figure shows faintly with its name.
+    const atlas = clamp((0.95 - zoom) / 0.25, 0, 1);
     const conVis = clamp((lim - 1) / 3, 0, 1);
     let best = null, bestD = 90;
     const hover = ptr.on && ptr.y < hY && conVis > 0.02;
@@ -544,8 +681,9 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const c of cons) {
       c.glow += ((c === best ? 1 : 0) - c.glow) * (c === best ? 0.14 : 0.06);
-      if (c.glow < 0.01 || !c.seen) continue;
-      const al = c.glow * conVis;
+      const lit = Math.max(c.glow, 0.45 * atlas);
+      if (lit < 0.01 || !c.seen) continue;
+      const al = lit * conVis;
       let i = 0, sx = 0, cnt = 0, top = 1e9, bot = -1e9;
       ctx.beginPath();
       for (const run of c.runs) {
@@ -575,6 +713,19 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
       }
     }
     ctx.font = `300 10px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    // Zoomed in, star names appear on their own: the brightest first, then fainter ones the closer you go.
+    if (zoom > 1.8 && pal.star > 0.05) {
+      const nameLim = lerp(1.2, 4.2, clamp((zoom - 1.8) / 3.2, 0, 1));
+      for (const [idx, name] of STAR_LABELS) {
+        const mag = sMag[idx]; if (mag >= nameLim) break; if (mag >= lim || sHor[idx * 3 + 2] < 0.02) continue;
+        if (label && label.name === name) continue;
+        const p = proj([sHor[idx * 3], sHor[idx * 3 + 1], sHor[idx * 3 + 2]]); if (!p || p[0] < 0 || p[0] > W || p[1] < 14 || p[1] > hY) continue;
+        const hw = ctx.measureText(name).width / 2 + 4, box = [p[0] - hw, p[1] - 22, p[0] + hw, p[1] - 4];
+        if (marks.some(m => box[0] < m[2] && box[2] > m[0] && box[1] < m[3] && box[3] > m[1])) continue;
+        marks.push(box);
+        ctx.fillStyle = rgba([238, 242, 244], 0.6 * clamp(zoom - 1.8, 0, 1)); ctx.fillText(name, p[0], p[1] - 8);
+      }
+    }
     if (label) { ctx.fillStyle = 'rgba(238,242,244,0.9)'; ctx.fillText(label.name, label.p[0], label.p[1] - 8); }
 
     bodies.length = 0;
@@ -620,31 +771,61 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
     const ink = lum > 120 ? [16, 22, 56] : [238, 242, 244];
     ctx.strokeStyle = rgba(ink, 0.5); ctx.fillStyle = rgba(ink, 0.7); ctx.lineWidth = 1;
     ctx.beginPath();
-    const d0 = Math.round(psi / RAD);
-    for (let d = d0 - 80; d <= d0 + 80; d++) {
-      const a = d * RAD - psi, x = cx + f * Math.tan(a) / cphi;
+    const [bL, bM] = scaleSteps(f * RAD / cphi), per = Math.round(bL / bM), half = per % 2 ? 0 : per / 2;
+    const span = Math.min(80, Math.atan(W / 2 / f * cphi) / RAD * 1.15 + 3);
+    for (let n = Math.ceil((psi / RAD - span) / bM); n * bM <= psi / RAD + span; n++) {
+      const x = cx + f * Math.tan(n * bM * RAD - psi) / cphi;
       if (x < -20 || x > W + 20) continue;
-      const dd = ((d % 360) + 360) % 360, len = dd % 10 === 0 ? 9 : dd % 5 === 0 ? 6 : 3;
+      const major = n % per === 0, len = major ? 9 : half && n % half === 0 ? 6 : 3;
       ctx.moveTo(x + 0.5, hY); ctx.lineTo(x + 0.5, hY - len);
-      if (dd % 10 === 0) ctx.fillText(String(dd).padStart(3, '0') + '°' + (dd % 90 === 0 ? ' ' + 'NESW'[dd / 90] : ''), x, hY - 12);
+      if (major) { const dd = ((Math.round(n * bM) % 360) + 360) % 360; ctx.fillText(String(dd).padStart(3, '0') + '°' + (dd % 90 === 0 ? ' ' + 'NESW'[dd / 90] : ''), x, hY - 12); }
     }
     ctx.stroke();
     ctx.restore();
 
-    // If the sun or moon is up but out of view, say which way to turn.
+  }
+
+  let headBottom = 0, tagsBottom = 0;
+  function drawPointers() {
+    const sp = proj(sun.v), mp = proj(moon.v), sunR = f * 0.05, moonR = f * 0.034;
+    ctx.shadowColor = 'rgba(4,11,22,0.9)'; ctx.shadowBlur = 4;
+    // If the sun or moon is out of view, say which way to turn, also when it is below the horizon.
     ctx.font = `400 10px ${MONO}`; ctx.fillStyle = 'rgba(238,242,244,0.85)';
     let stack = 0;
     for (const [name, b, p, R] of [['Sun', sun, sp, sunR], ['Moon', moon, mp, moonR]]) {
-      if (b.alt < 0.5 * RAD) continue;
-      if (p && p[0] > -R && p[0] < W + R && p[1] > -R) continue;
-      const altTxt = `alt ${(b.alt / RAD).toFixed(0)}°`, azTxt = `${(b.az / RAD).toFixed(0)}°`;
+      if (p && p[0] > -R && p[0] < W + R && p[1] > -R && p[1] < H + R && (seaOn || b.alt > 0)) continue;
+      const altTxt = `alt ${sgn(b.alt / RAD)}°`;
       if (p && p[0] > 60 && p[0] < W - 60) {
-        ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(`↑ ${name} ${altTxt}`, p[0], 8);
+        ctx.textAlign = 'center';
+        if (p[1] < 0) { ctx.textBaseline = 'top'; ctx.fillText(`↑ ${name} ${altTxt}`, p[0], 8); }
+        else { ctx.textBaseline = 'bottom'; ctx.fillText(`↓ ${name} ${altTxt}`, p[0], H - 26); }
       } else {
-        const right = wrapPi(b.az - psi) > 0, y = Math.max(40, hY - 30 - stack * 16); stack++;
+        const right = wrapPi(b.az - psi) > 0, clear = (right ? tagsBottom : headBottom) + 22;      // keep off the lettering in the top corners
+        let y = clamp(hY - 30 - stack * 16, 40, H - 150 - stack * 16); if (y < clear) y = clear + stack * 16; stack++;
         ctx.textBaseline = 'bottom'; ctx.textAlign = right ? 'right' : 'left';
-        ctx.fillText(right ? `${name} ${azTxt} ${altTxt} →` : `← ${name} ${azTxt} ${altTxt}`, right ? W - 52 : 14, y);
+        ctx.fillText(right ? `${name} ${(b.az / RAD).toFixed(0)}° ${altTxt} →` : `← ${name} ${(b.az / RAD).toFixed(0)}° ${altTxt}`, right ? W - 52 : 14, y);
       }
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  // Below the horizon the sun and moon are still there: a faint dashed outline through the water,
+  // with how far down they are and how long until they rise.
+  const span = min => { const m = Math.max(0, Math.round(min)); return m >= 60 ? `${m / 60 | 0} h ${String(m % 60).padStart(2, '0')} min` : `${m} min`; };
+  function drawBelow() {
+    const waited = (Date.now() - riseAt) / 60000;
+    ctx.font = `300 10px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for (const [name, b, R, rise, col] of [['Sun', sun, f * 0.05, sunRise, [255, 214, 170]], ['Moon', moon, f * 0.034, moonRise, [214, 226, 255]]]) {
+      if (b.alt > -0.2 * RAD) continue;
+      const p = proj(b.v); if (!p || p[0] < -R || p[0] > W + R || p[1] > H + R || p[1] < hY - R) continue;
+      ctx.setLineDash([3, 5]); ctx.strokeStyle = rgba(col, 0.75); ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(p[0], p[1], R, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+      const deg = b.alt / RAD, rises = rise == null ? '' : `rises in ${span(rise - waited)}`;
+      const stage = name !== 'Sun' ? '' : deg > -6 ? 'civil twilight' : deg > -12 ? 'nautical twilight' : deg > -18 ? 'astronomical twilight' : 'night';
+      ctx.shadowColor = 'rgba(4,11,22,0.9)'; ctx.shadowBlur = 5; ctx.fillStyle = rgba(col, 0.85);
+      ctx.fillText(`${name} ${sgn(deg, 1)}° · az ${(b.az / RAD).toFixed(1)}°`, p[0], p[1] + R + 8);
+      ctx.fillText([stage, rises].filter(Boolean).join(' · '), p[0], p[1] + R + 22);
+      ctx.shadowBlur = 0;
     }
   }
 
@@ -761,15 +942,16 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
     ctx.strokeStyle = 'rgba(238,242,244,0.5)'; ctx.fillStyle = 'rgba(238,242,244,0.75)';
     ctx.shadowColor = 'rgba(4,11,22,0.8)'; ctx.shadowBlur = 4;
     ctx.beginPath();
-    let prev = altAt(-1);
+    const [aL, aM] = scaleSteps(f * RAD), per = Math.round(aL / aM), half = per % 2 ? 0 : per / 2;
+    let prev = altAt(-1) / aM;
     for (let y = 0; y <= Math.min(H, hY); y++) {
-      const a = altAt(y), n = Math.ceil(a);
-      if (n <= prev && n > a - 1e-9 && Math.floor(prev) !== Math.floor(a) || (prev >= n && a < n)) {
-        const len = n % 10 === 0 ? 10 : n % 5 === 0 ? 6 : 3;
+      const v = altAt(y) / aM, n = Math.ceil(v);
+      if (prev >= n && v < n) {
+        const major = n % per === 0, len = major ? 10 : half && n % half === 0 ? 6 : 3, deg = Math.round(n * aM);
         ctx.moveTo(W, y + 0.5); ctx.lineTo(W - len, y + 0.5);
-        if (n % 10 === 0 && y > 12 && y < H - 12) ctx.fillText((n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n) + '°', W - 14, y + 0.5);
+        if (major && y > 12 && y < H - 12) ctx.fillText((deg > 0 ? '+' : deg < 0 ? '−' : '') + Math.abs(deg) + '°', W - 14, y + 0.5);
       }
-      prev = a;
+      prev = v;
     }
     ctx.stroke(); ctx.shadowBlur = 0;
   }
@@ -782,9 +964,11 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
 
   /* ================= live lettering ================= */
   const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+  const headEl = document.querySelector('.name'), tagsEl = document.querySelector('.tags');
   function readout(t) {
+    headBottom = headEl.getBoundingClientRect().bottom; tagsBottom = tagsEl.getBoundingClientRect().bottom;
     const hd = ((psi / RAD) % 360 + 360) % 360;
-    s1.textContent = `${c5(LAT0)}, ${c5(LON0)} · heading ${String(Math.round(hd) % 360).padStart(3, '0')}° ${COMPASS[Math.round(hd / 22.5) % 16]} · pitch ${sgn(phi / RAD)}°`;
+    s1.textContent = `${c5(LAT0)}, ${c5(LON0)} · heading ${String(Math.round(hd) % 360).padStart(3, '0')}° ${COMPASS[Math.round(hd / 22.5) % 16]} · pitch ${sgn(phi / RAD)}° · field ${(2 * Math.atan(W / 2 / f) / RAD).toFixed(0)}°`;
     if (!ptr.on) return;
     const g = unproject(ptr.x, ptr.y);
     if (g.sky) {
@@ -815,8 +999,8 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
       idleG = g;
     } else idleG = null;
     step(); step();
-    drawSky(t); if (seaOn) { drawSea(t); drawGratLabels(); drawReticle(); }
-    drawAltAxis();
+    drawSky(t); if (seaOn) { drawSea(t); drawGratLabels(); drawBelow(); drawReticle(); }
+    drawAltAxis(); drawPointers();
     if (frameN++ % 5 === 0) readout(t);
     requestAnimationFrame(frame);
   }
@@ -926,11 +1110,12 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
     const lead = sun.alt > -4 * RAD ? sun : moon.alt > 2 * RAD ? moon : sun.alt > -12 * RAD ? sun : null;
     tPsi = psi = lead ? lead.az - 12 * RAD : 90 * RAD;
     tPhi = phi = lead ? clamp(lead.alt - 14 * RAD, 0, Math.atan((0.74 * H - cyP) / f)) : 0;
+    zoom = tZoom = 1; f = f0; setLimits();
   }
   function setPlace(lat, lon) {
     LAT0 = clamp(lat, -89.9, 89.9); LON0 = ((lon + 540) % 360) - 180;
     PHI = LAT0 * RAD; LW = -LON0 * RAD;
-    atHome = Math.abs(LAT0 - HOME.lat) < 1e-6 && Math.abs(LON0 - HOME.lon) < 1e-6;
+    atHome = Math.abs(LAT0 - HOME.lat) < 1e-6 && Math.abs(LON0 - HOME.lon) < 1e-6; riseAt = 0;
     setGrid();
     let phrase = 'in Miami';
     if (!atHome) try { phrase = placePhrase(LAT0, LON0); } catch (e) { phrase = 'somewhere on Earth'; }
