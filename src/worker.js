@@ -15,6 +15,12 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    // www.anton.miami -> anton.miami (keeps path and ?utm_ tags)
+    if (url.hostname.startsWith('www.')) {
+      url.hostname = url.hostname.slice(4);
+      return Response.redirect(url.toString(), 301);
+    }
+
     if (url.pathname.startsWith('/ingest/') || url.pathname === '/ingest') {
       return proxyPostHog(request, url, env);
     }

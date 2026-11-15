@@ -23,7 +23,8 @@
     "POSTHOG_REGION": "us"
   },
   "routes": [
-    { "pattern": "anton.miami", "custom_domain": true }
+    { "pattern": "anton.miami", "custom_domain": true },
+    { "pattern": "www.anton.miami", "custom_domain": true }
   ],
   "observability": { "enabled": true }
 }

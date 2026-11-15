@@ -37,12 +37,12 @@ Until a real key is in place the tracker runs in "keyless" mode: it sends nothin
 browser console.
 
 ### 2. Cloudflare
-1. **Remove the current redirect.** Today `anton.miami` returns a 302 to `yardsale.anton.miami`.
-   In the Cloudflare dashboard → anton.miami zone → **Rules** (Redirect Rules or Page Rules), delete
-   the rule that redirects the apex. Leave the `yardsale` DNS record alone; the subdomain keeps
-   working, it just isn't linked from the front page.
-2. If **DNS** has a record for the apex `anton.miami` (often a placeholder A/AAAA record that only
-   existed for the redirect), delete it. The Worker's custom domain creates its own record.
+1. **Free the domain from the `yardsale` Worker.** `anton.miami` and `www.anton.miami` are attached
+   to the `yardsale` Worker as custom domains (that's what redirects them today). In
+   Workers & Pages → **yardsale** → Settings → **Domains & Routes**, remove `anton.miami` and
+   `www.anton.miami`. Keep `yardsale.anton.miami`; Yard Sale keeps working, it just isn't linked
+   from the front page.
+2. Deploy this Worker right away (next step). It claims both domains, and `www` redirects to the root.
 3. **Deploy.** Choose one:
    - *Git-connected (recommended):* Workers & Pages → Create → **Import a repository** →
      `avguchenko/anton.miami`, production branch `main`. Leave the build command blank; the deploy command is
