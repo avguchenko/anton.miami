@@ -103,7 +103,7 @@
 <main class="chart">
   <header class="name">
     <h1 id="title">Anton in Miami</h1>
-    <p id="s1">25.79070°N 80.13000°W · heading 90.00000° E · pitch +0.00000°</p>
+    <p id="s1">25.79070, -80.13000 · heading 090° E · pitch +0°</p>
     <p id="s2">UTC · solar time</p>
     <p id="s3">Sun · Moon</p>
     <p class="links"><a class="out" href="https://github.com/avguchenko" target="_blank" rel="noopener" data-track="github">GitHub ↗</a></p>
@@ -116,7 +116,7 @@
   </ul>
 
   <div class="read">
-    <p class="live" id="r1">LAT 25.79070°N   LON 80.13000°W</p>
+    <p class="live" id="r1">25.79070, -80.13000</p>
     <p class="live" id="r2">RANGE 0.00 km   η +0.00 m</p>
     <p class="hint" id="hint">Move to draw a wake. Click to drop a stone. Drag to look around. Paste coordinates to stand somewhere else.</p>
   </div>
@@ -171,8 +171,8 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
   const M_PER_UNIT = 100;                   // one world unit = 100 m
   let PHI = LAT0 * RAD, LW = -LON0 * RAD;
   const OBL = 23.4397 * RAD;
-  const ll = (v, pos, neg) => `${Math.abs(v).toFixed(5)}°${v >= 0 ? pos : neg}`;           // every angle is lettered in decimal degrees, five places
-  const sg5 = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(5);
+  const c5 = v => v.toFixed(5);             // coordinates are written as signed decimal degrees, five places: 25.79070, -80.13000
+  const sgn = (v, d = 0) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d);
   const toDays = ms => ms / 864e5 - 0.5 + 2440588 - 2451545;       // days since J2000
   const eqRA = (l, b) => Math.atan2(Math.sin(l) * Math.cos(OBL) - Math.tan(b) * Math.sin(OBL), Math.cos(l));
   const eqDec = (l, b) => Math.asin(Math.sin(b) * Math.cos(OBL) + Math.cos(b) * Math.sin(OBL) * Math.sin(l));
@@ -278,7 +278,7 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
     let civil = '';
     if (atHome) try { civil = ' · Miami ' + new Date(ms).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: false }); } catch (e) {}
     s2.textContent = `UTC ${new Date(ms).toISOString().slice(11, 19)}${civil} · solar ${hms(solar)}`;
-    s3.textContent = `Sun ${sg5(sun.alt / RAD)}° · Moon ${sg5(moon.alt / RAD)}°, ${phaseName(moon.phase)} ${(moon.frac * 100).toFixed(0)}%`;
+    s3.textContent = `Sun ${sgn(sun.alt / RAD)}° · Moon ${sgn(moon.alt / RAD)}°, ${phaseName(moon.phase)} ${(moon.frac * 100).toFixed(0)}%`;
   }
 
   /* ================= the swell: a sum of deep-water sine waves, rolling in from the east ================= */
@@ -608,7 +608,7 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
       disk.addColorStop(0, rgb(mix3([255, 240, 214], [255, 253, 244], high))); disk.addColorStop(1, rgb(mix3([245, 154, 119], [255, 244, 214], high)));
       ctx.fillStyle = disk; ctx.beginPath(); ctx.arc(sp[0], sp[1], sunR, 0, TAU); ctx.fill();
       ctx.fillStyle = 'rgba(255,244,224,0.9)';
-      ctx.fillText(`Sun az ${(sun.az / RAD).toFixed(5)}°`, sp[0], sp[1] - sunR - 8);
+      ctx.fillText(`Sun ${(sun.az / RAD).toFixed(0)}°`, sp[0], sp[1] - sunR - 8);
       if (sunDeg > -1) bodies.push({ x: sp[0], col: warm, a: 0.5 * clamp(1.15 - sunDeg / 55, 0.25, 1) });
     }
 
@@ -634,7 +634,7 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
     for (const [name, b, p, R] of [['Sun', sun, sp, sunR], ['Moon', moon, mp, moonR]]) {
       if (b.alt < 0.5 * RAD) continue;
       if (p && p[0] > -R && p[0] < W + R && p[1] > -R) continue;
-      const altTxt = `alt ${(b.alt / RAD).toFixed(5)}°`, azTxt = `az ${(b.az / RAD).toFixed(5)}°`;
+      const altTxt = `alt ${(b.alt / RAD).toFixed(0)}°`, azTxt = `${(b.az / RAD).toFixed(0)}°`;
       if (p && p[0] > 60 && p[0] < W - 60) {
         ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(`↑ ${name} ${altTxt}`, p[0], 8);
       } else {
@@ -725,7 +725,7 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
         const c = off + m * sp, A = seaPt((c - za * p) / q, za), B = seaPt((c - zb * p) / q, zb);
         const dxl = B[0] - A[0], dyl = B[1] - A[1]; if (Math.abs(dyl) < 1e-6) continue;
         const xb = A[0] + (yB - A[1]) / dyl * dxl;
-        const text = isLon ? ll((LON_I0 + m) * LON_STEP, 'E', 'W') : ll((LAT_I0 + m) * GSTEP, 'N', 'S');
+        const text = isLon ? c5((LON_I0 + m) * LON_STEP) : c5((LAT_I0 + m) * GSTEP);
         if (xb >= 44 && xb <= W - 44) items.push({ edge: 0, pos: xb, x: xb, y: yB, text, a: wgt, tx: dxl, ty: dyl });
         else if (Math.abs(dxl) > 1e-6) {
           const left = xb < 44, xs = left ? 12 : W - 12, ys = A[1] + (xs - A[0]) / dxl * dyl;
@@ -781,12 +781,12 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
   const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
   function readout(t) {
     const hd = ((psi / RAD) % 360 + 360) % 360;
-    s1.textContent = `${ll(LAT0, 'N', 'S')} ${ll(LON0, 'E', 'W')} · heading ${hd.toFixed(5)}° ${COMPASS[Math.round(hd / 22.5) % 16]} · pitch ${sg5(phi / RAD)}°`;
+    s1.textContent = `${c5(LAT0)}, ${c5(LON0)} · heading ${String(Math.round(hd) % 360).padStart(3, '0')}° ${COMPASS[Math.round(hd / 22.5) % 16]} · pitch ${sgn(phi / RAD)}°`;
     if (!ptr.on) return;
     const g = unproject(ptr.x, ptr.y);
     if (g.sky) {
       const az = ((g.az / RAD) % 360 + 360) % 360;
-      r1.textContent = `ALT ${sg5(g.alt / RAD)}°   AZ ${az.toFixed(5)}°`;
+      r1.textContent = `ALT ${sgn(g.alt / RAD, 1)}°   AZ ${az.toFixed(1).padStart(5, '0')}°`;
       r2.textContent = 'SKY';
       return;
     }
@@ -794,7 +794,7 @@ const GEO = {"land":{"n":["Zimbabwe","Zambia","Yemen","Vietnam","Venezuela","Van
     let eta = sample(g.gi, g.gj) * 0.035 * Math.pow(g.r, 0.7);
     for (const w of waves) eta += w.a * Math.sin(w.kE * g.E + w.kN * g.N + w.w * t);
     eta *= 10;
-    r1.textContent = `LAT ${ll(lat, 'N', 'S')}   LON ${ll(lon, 'E', 'W')}`;
+    r1.textContent = `${c5(lat)}, ${c5(lon)}`;
     r2.textContent = `RANGE ${(g.r * M_PER_UNIT / 1000).toFixed(2)} km   η ${eta >= 0 ? '+' : '−'}${Math.abs(eta).toFixed(2)} m`;
   }
 
