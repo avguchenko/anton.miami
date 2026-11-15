@@ -22,6 +22,16 @@
     // PostHog cloud region: "us" or "eu".
     "POSTHOG_REGION": "us"
   },
+  // Pull-request preview builds (Workers Builds runs `wrangler preview`). Same pages,
+  // but a separate experiment name so preview traffic never mixes into real results.
+  "previews": {
+    "vars": {
+      "VARIANTS": "dawn,chart",
+      "WEIGHTS": "1,1",
+      "EXPERIMENT": "preview",
+      "POSTHOG_REGION": "us"
+    }
+  },
   "routes": [
     { "pattern": "anton.miami", "custom_domain": true },
     { "pattern": "www.anton.miami", "custom_domain": true }

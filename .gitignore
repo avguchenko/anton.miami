@@ -1,4 +1,10 @@
 node_modules/
 .wrangler/
-.dev.vars
+.dev.vars*
+.env*
+!.env.example
 .DS_Store
+*.bundle
+# analysis output (local only; contains per-visitor rows)
+reports/
+data/

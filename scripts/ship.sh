@@ -37,6 +37,12 @@ if git diff --quiet && git diff --cached --quiet && [[ -z "$(git ls-files --othe
 fi
 
 git add -A
+# never publish secrets, even if an ignore rule goes missing
+if git diff --cached --name-only | grep -qE '(^|/)\.env($|\.)|(^|/)\.dev\.vars'; then
+  git diff --cached --name-only | grep -E '(^|/)\.env($|\.)|(^|/)\.dev\.vars' | grep -v '\.env\.example$' >/dev/null && {
+    git reset --quiet
+    echo "ship: refusing to commit a .env / .dev.vars file (secrets). Add it to .gitignore."; exit 1; }
+fi
 git commit --quiet -m "$MSG"
 git push --quiet
 echo "✓ pushed $(git rev-parse --short HEAD) to $(git branch --show-current); Cloudflare will deploy it in about a minute"

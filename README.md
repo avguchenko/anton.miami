@@ -1,27 +1,63 @@
 # anton.miami
 
-Personal front page, run as an A/B test between two designs:
+[![CI](https://github.com/avguchenko/anton.miami/actions/workflows/ci.yml/badge.svg)](https://github.com/avguchenko/anton.miami/actions/workflows/ci.yml)
 
-| Variant | File | What it is |
-|---|---|---|
-| `dawn`  | `public/variants/dawn/index.html`  | "Anton in Miami": a line-drawn sea under the real sky, with a wake under the pointer |
-| `chart` | `public/variants/chart/index.html` | "Anton Miami": a living nautical chart of the Straits of Florida |
+**[anton.miami](https://anton.miami)**: my front page. It's a living chart of the sea off Miami,
+drawn from geography, mathematics and patterns, and it answers when you move the pointer.
 
-A Cloudflare Worker (`src/worker.js`) serves `https://anton.miami/`. On a visitor's first visit it
-picks a variant at random (50/50) and stores the choice in a cookie, so returning
-visitors always see the same page. There's no redirect and no flicker, and the URL stays `anton.miami/`.
-Analytics go to PostHog through a first-party proxy at `/ingest`, so ad blockers
-don't silently drop data.
+There are two designs, and the site is an A/B test between them: each visitor is randomly shown one,
+and I measure which one people actually spend time with.
+
+| `dawn`: *Anton in Miami* | `chart`: *Anton Miami* |
+|---|---|
+| [![The dawn design: a line-drawn sea under the real sky over Miami](docs/dawn.jpg)](https://anton.miami/?v=dawn) | [![The chart design: a living nautical chart of the Straits of Florida](docs/chart.jpg)](https://anton.miami/?v=chart) |
+| A line-drawn sea under the sun, moon and stars as they are right now. The pointer leaves a wake (a 2-D wave equation), clicks drop stones, dragging turns the view, and pasting coordinates takes you anywhere. | A bathymetric chart of the Straits of Florida: contour lines from noise fields, the Gulf Stream as a particle flow, depth soundings, Voronoi and vector-field layers under a reveal lens, and Mercator ↔ orthographic projections. |
+
+## How it works
+
+```
+                ┌──────────────── Cloudflare Worker (src/worker.js) ────────────────┐
+ visitor ──▶ /  │ first visit: pick dawn|chart at random → cookie (sticky)          │──▶ page + /ab/track.js
+                │ www.anton.miami → 301 → anton.miami                               │
+ browser ─▶ /ingest/* ─────────── first-party proxy ──────────────────────────────▶ PostHog
+                └───────────────────────────────────────────────────────────────────┘
+```
+
+- **Edge split, no flicker.** The Worker chooses the variant before any HTML is sent, with no client-side
+  swapping and no redirect. The URL stays `anton.miami/`.
+- **Measures behaviour, not just clicks.** Both pages are one big canvas, so `public/ab/track.js` records
+  attention time, pointer travel, taps, drags, keys, a coarse position heat grid and outbound clicks,
+  plus PostHog session replay that includes the canvas.
+- **Privacy:** honours Global Privacy Control and Do Not Track, uses an anonymous visitor ID, and
+  has no ads or third-party cookies. Analytics go through the site's own domain.
+- **Stack:** Cloudflare Workers + static assets, PostHog, vanilla JS/Canvas, no build step.
+  Deploys automatically on push to `main` (Workers Builds), with CI running unit tests and a dry-run build.
+
+### Repository layout
 
 ```
 public/
-  variants/dawn/index.html     variant A
-  variants/chart/index.html    variant B
+  variants/dawn/index.html     variant A (design source: ../anton.miami/index.html)
+  variants/chart/index.html    variant B (design source: ../anton.miami/alternative1/index.html)
   ab/track.js                  shared tracking (PostHog + behavioural events)
   og.png                       neutral link-preview card (same for both variants)
-src/worker.js                  split + cookie + PostHog proxy
-wrangler.jsonc                 Worker config (variants, weights, experiment name, domain)
+src/worker.js                  split + cookie + www redirect + PostHog proxy
+test/worker.test.js            unit tests for the Worker (node --test)
+scripts/sync_pages.py          copies in new designs and re-applies the A/B additions
+scripts/ship.sh                npm run ship: sync → check → commit → push
+wrangler.jsonc                 Worker config (variants, weights, experiment name, domains)
 ```
+
+### Commands
+
+| | |
+|---|---|
+| `npm run ship` | publish the latest designs (Cloudflare deploys on push) |
+| `npm run dev` | run locally at http://localhost:8787 (try `/?v=chart&ab_debug=1`) |
+| `npm test` | Worker unit tests |
+| `npm run check` | syntax check + dry-run Worker build |
+| `npm run analyze` | pull PostHog data → `reports/latest.md` (see Analysis) |
+| `npm run schedule` | run the analysis every morning on this Mac |
 
 ## One-time setup
 
@@ -92,7 +128,7 @@ either one. After deploying, paste the URL into LinkedIn's **Post Inspector**
 
 ## What's measured
 
-Every event carries `variant`, `ab_experiment`, `ab_assignment` (`new` / `returning` / `forced`) and `ab_preview`.
+Every event carries `variant`, `ab_experiment`, `ab_assignment` (`new` / `returning` / `forced`), `ab_preview` and `page_id` (one per page load). `ab_exposure` also records `in_app_browser` (LinkedIn's in-app browser etc.), `cpu_cores`, `device_memory_gb` and `connection`.
 
 | Event | When | Key properties |
 |---|---|---|
@@ -104,6 +140,7 @@ Every event carries `variant`, `ab_experiment`, `ab_assignment` (`new` / `return
 | `coords_pasted` | pasting coordinates (dawn) | `moved`, `place` |
 | `view_changed` | URL hash changes | `hash` |
 | `outbound_click` | any link off the site | `destination`, `href`, `label`, `seconds_on_page` |
+| `perf` | after 6 visible seconds | `fps`, `fps_min_1s`, `long_frames`, `load_ms`, `transfer_kb`: the designs differ a lot in weight and rendering cost, so this controls for speed |
 | `page_summary` | tab hidden / page closed | `visible_s`, `attentive_s` (visible + input in the last 15 s), `exit` (`outbound`/`left`), `exit_href`, `pointer_travel_screens`, `taps`, `drags`, `keys`, `distinct_keys`, `max_idle_s`, `heat_grid` (12×8, % of pointer time per cell) |
 
 PostHog's own data covers the rest: `$pageview` / `$pageleave`, autocaptured clicks, **heatmaps**
@@ -115,6 +152,30 @@ canvas recording off, set `RECORD_CANVAS = false` in `track.js`.
 numbers are cumulative within that load, so keep the row with the highest `seq` per `page_id`,
 then roll page loads up into sessions (the SQL below does this). `max_idle_s` includes the idle
 stretch still running when the visitor leaves.
+
+## Analysis
+
+`npm run analyze` pulls the experiment's events from PostHog, rolls them up **per visitor** (the
+unit the Worker randomises), and writes `reports/latest.md`, a dated copy, and a per-visitor CSV in
+`data/`. Both folders are git-ignored.
+
+The report covers:
+- **a verdict line:** keep running / winner / no clear winner / something's broken, judged against the pre-registered plan
+  (primary metric, 356 visitors per arm), with an ETA at the current traffic rate
+- **primary metric:** engaged ≥ 30 s, with Newcombe 95% CI, z-test p and Bayesian P(better)
+- **secondary metrics:** interaction, outbound clicks, bounce, visible/attentive time, pointer travel,
+  time to first input (bootstrap CIs, Mann–Whitney)
+- **segments:** mouse vs touch, in-app browsers, top traffic sources
+- **performance as a confounder:** frame rate and load time per design
+- **data quality:** sample-ratio-mismatch check, visitors who saw both designs, missing summaries
+
+Setup (once, on the Mac):
+1. PostHog → avatar → **Settings → User → Personal API keys → Create**, scopes **Query: Read** and
+   **Project: Read**. (This is different from the public `phc_` key in `track.js`.)
+2. `cp .env.example .env` and fill in the key and your **Project ID** (Settings → Project → General).
+3. `npm run analyze` to check it works. Try `npm run analyze -- --demo` first to see a sample report.
+4. `npm run schedule`: runs it every morning at 08:17 via launchd and posts a macOS notification
+   with the headline. `npm run schedule -- status` / `-- off` to check or remove.
 
 ## Running the test properly
 
@@ -188,12 +249,6 @@ calculator works.
   `<meta name="ab-variant" content="<name>">` and the `track.js` script tag, add it to `VARIANTS`,
   and change `EXPERIMENT`. Changing `EXPERIMENT` re-randomises everyone.
 - **Ending the test:** set `VARIANTS` to the winner alone.
-
-## Local development
-```
-npm install
-npx wrangler dev        # http://localhost:8787  (try /?v=chart&ab_debug=1)
-```
 
 ## License
 

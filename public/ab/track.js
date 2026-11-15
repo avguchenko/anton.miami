@@ -76,13 +76,13 @@
         captureCanvas: { recordCanvas: RECORD_CANVAS, canvasFps: CANVAS_FPS, canvasQuality: '0.35' },
       },
       loaded: function (ph) {
-        ph.register({ variant: variant, ab_experiment: experiment, ab_assignment: assignment, ab_preview: preview });
+        ph.register({ variant: variant, ab_experiment: experiment, ab_assignment: assignment, ab_preview: preview, page_id: pageId });
         if (debug) ph.debug(true);
         while (queue.length) { var q = queue.shift(); ph.capture(q[0], q[1], q[2] ? { transport: 'sendBeacon' } : undefined); }
       },
     });
     // register immediately too, so events queued in the stub carry the variant
-    window.posthog.register({ variant: variant, ab_experiment: experiment, ab_assignment: assignment, ab_preview: preview });
+    window.posthog.register({ variant: variant, ab_experiment: experiment, ab_assignment: assignment, ab_preview: preview, page_id: pageId });
   }
 
   // ---- exposure -------------------------------------------------------------
@@ -105,8 +105,44 @@
     dpr: devicePixelRatio || 1,
     input_class: fine ? 'mouse' : 'touch',
     reduced_motion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+    cpu_cores: navigator.hardwareConcurrency || null,
+    device_memory_gb: navigator.deviceMemory || null,
+    connection: (navigator.connection && navigator.connection.effectiveType) || null,
+    in_app_browser: /FBAN|FBAV|Instagram|LinkedInApp|Twitter|Line\//i.test(navigator.userAgent),
     referrer_domain: refDomain,
   }, utm()));
+
+  // ---- performance: load time and frame rate --------------------------------
+  // The two designs differ a lot in weight and rendering cost, so slow loads or
+  // low frame rates could explain engagement differences on their own. Measured
+  // here so the analysis can control for them.
+  var perf = { fps: null, fpsMin: null, longFrames: 0 };
+  (function measureFps() {
+    var frames = 0, start = null, last = null, worst = 0, windowStart = null, windowFrames = 0, minFps = Infinity;
+    function step(t) {
+      if (document.hidden) { start = null; requestAnimationFrame(step); return; }
+      if (start === null) { start = last = windowStart = t; requestAnimationFrame(step); return; }
+      frames++; windowFrames++;
+      var dt = t - last; last = t;
+      if (dt > 50) perf.longFrames++;            // a visible stutter (< 20 fps for that frame)
+      worst = Math.max(worst, dt);
+      if (t - windowStart >= 1000) { minFps = Math.min(minFps, windowFrames * 1000 / (t - windowStart)); windowStart = t; windowFrames = 0; }
+      if (t - start < 6000) { requestAnimationFrame(step); return; }
+      perf.fps = Math.round(frames * 1000 / (t - start));
+      perf.fpsMin = Math.round(minFps);
+      var nav = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+      capture('perf', {
+        fps: perf.fps,                          // average over the first 6 visible seconds
+        fps_min_1s: perf.fpsMin,                // worst one-second window
+        long_frames: perf.longFrames,
+        worst_frame_ms: Math.round(worst),
+        load_ms: nav ? Math.round(nav.loadEventEnd || nav.domContentLoadedEventEnd) : null,
+        dom_ready_ms: nav ? Math.round(nav.domContentLoadedEventEnd) : null,
+        transfer_kb: nav && nav.transferSize ? Math.round(nav.transferSize / 1024) : null,
+      });
+    }
+    requestAnimationFrame(step);
+  })();
 
   // ---- behaviour accumulators ----------------------------------------------
   var s = {
@@ -273,6 +309,7 @@
       ui_clicks: s.uiClicks,
       pastes: s.pastes,
       pointer_types: Object.keys(s.pointerTypes).join(' '),
+      fps: perf.fps,
       // where the pointer rested: GRID_COLS x GRID_ROWS cells, row-major, % of hover time
       heat_grid: s.grid.map(function (v) { return Math.round(v / totalGrid * 1000) / 10; }),
       heat_grid_shape: GRID_COLS + 'x' + GRID_ROWS,
